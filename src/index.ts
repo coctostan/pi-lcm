@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { loadConfig } from "./config.ts";
+import type { LCMConfig } from "./config.ts";
 import { MemoryContentStore } from "./context/content-store.ts";
 import { ContextHandler } from "./context/context-handler.ts";
 import { StripStrategy } from "./context/strip-strategy.ts";
@@ -10,24 +11,24 @@ import { formatStatusBar } from "./status.ts";
  * pi-lcm extension entry point.
  * Registers the context handler and lcm_expand tool with a shared ContentStore (AC 15).
  */
-export default function (pi: ExtensionAPI): void {
-	const config = loadConfig();
+export default function (pi: ExtensionAPI, config?: LCMConfig): void {
+	const resolvedConfig = config ?? loadConfig();
 	const store = new MemoryContentStore();
 
 	// Wire ContextHandler with the shared store (AC 15)
 	const strategy = new StripStrategy();
 	const handler = new ContextHandler(strategy, store, {
-		freshTailCount: config.freshTailCount,
+		freshTailCount: resolvedConfig.freshTailCount,
 	});
 
 	// Register the lcm_expand tool with the SAME store (AC 15)
-	registerExpandTool(pi, store, { maxExpandTokens: config.maxExpandTokens });
+	registerExpandTool(pi, store, { maxExpandTokens: resolvedConfig.maxExpandTokens });
 
 	pi.on("context", async (event, ctx) => {
 		const result = handler.process(event.messages);
 		event.messages = result.messages;
 		// AC 11 + AC 12
-		const text = formatStatusBar(result.stats, ctx.getContextUsage(), config.freshTailCount);
+		const text = formatStatusBar(result.stats, ctx.getContextUsage(), resolvedConfig.freshTailCount);
 		ctx.ui.setStatus("lcm", text);
 	});
 
