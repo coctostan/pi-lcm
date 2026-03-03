@@ -12,7 +12,7 @@ The zero-cost continuity invariant must hold at every milestone: a user who inst
 
 ---
 
-## Phase 1: MVP — Zero-Cost Context Filtering
+## Phase 1: MVP — Zero-Cost Context Filtering ✅
 
 **Goal:** Ship something useful with no LLM summarization costs and no SQLite dependency.
 
@@ -42,12 +42,12 @@ The zero-cost continuity invariant must hold at every milestone: a user who inst
 | # | Task |
 |---|------|
 | 1.1 | ~~Extension scaffold: `package.json`, `tsconfig.json`, pi extension entry point~~ ✅ |
-| 1.2 | Config system: defaults, schema validation, hot reload |
-| 1.3 | `context` event handler: fresh tail protection, threshold check, strip logic |
-| 1.4 | `lcm_expand` tool: session entry lookup, token cap, tool registration |
-| 1.5 | Status bar integration: `ctx.ui.setStatus()` per-turn |
-| 1.6 | Tests: session fixtures, context builder unit tests, expand tool tests |
-| 1.7 | README: install instructions, config reference, usage examples |
+| 1.2 | ~~Config system: defaults, schema validation, hot reload~~ ✅ |
+| 1.3 | ~~`context` event handler: fresh tail protection, threshold check, strip logic~~ ✅ |
+| 1.4 | ~~`lcm_expand` tool: session entry lookup, token cap, tool registration~~ ✅ |
+| 1.5 | ~~Status bar integration: `ctx.ui.setStatus()` per-turn~~ ✅ |
+| 1.6 | ~~Tests: session fixtures, context builder unit tests, expand tool tests~~ ✅ (52 passing) |
+| 1.7 | ~~README: install instructions, config reference, usage examples~~ ✅ |
 
 ### Exit Criteria
 
@@ -88,25 +88,25 @@ The zero-cost continuity invariant must hold at every milestone: a user who inst
 
 ### Milestones
 
-| # | Task |
-|---|------|
-| 2.1 | SQLite schema + `better-sqlite3` integration |
-| 2.2 | `Store` interface + SQLite and in-memory implementations |
-| 2.3 | Message ingestion pipeline (`agent_end` → SQLite) |
-| 2.4 | Summarizer interface + pi-ai implementation (`complete()`) |
-| 2.5 | Token estimator (char-based with safety margin) |
-| 2.6 | Leaf compaction pass (detect threshold, chunk, summarize, store) |
-| 2.7 | Condensation pass (fanout detection, depth-aware prompts, cascade) |
-| 2.8 | Three-level escalation (Level 1 → 2 → 3 with convergence guarantee) |
-| 2.9 | `ContextBuilder` upgrade: read context_items, inject XML summary nodes |
-| 2.10 | `session_before_compact` override for reactive compaction |
-| 2.11 | `lcm_grep` tool (FTS5 queries) |
-| 2.12 | `lcm_describe` tool |
-| 2.13 | `lcm_expand` upgrade: DAG node retrieval, DAG walk for full reconstruction |
-| 2.14 | `session_start` reconciliation: JSONL ↔ SQLite sync |
-| 2.15 | Status bar upgrade: `🟢/🟡/🔴 {pct}% | {N} summaries (d{D}) | tail: {freshTailCount}` |
-| 2.16 | Integration tests with real session fixtures |
-| 2.17 | Performance tests: context event overhead, compaction latency |
+| # | Task | Issue |
+|---|------|-------|
+| 2.1 | SQLite schema + `better-sqlite3` integration | #002 |
+| 2.2 | `Store` interface + SQLite and in-memory implementations | #002 |
+| 2.3 | Message ingestion pipeline (`agent_end` → SQLite) | #003 |
+| 2.4 | Summarizer interface + pi-ai implementation (`complete()`) | #003 |
+| 2.5 | Token estimator (char-based with safety margin) | #003 |
+| 2.6 | Leaf compaction pass (detect threshold, chunk, summarize, store) | #004 |
+| 2.7 | Condensation pass (fanout detection, depth-aware prompts, cascade) | #004 |
+| 2.8 | Three-level escalation (Level 1 → 2 → 3 with convergence guarantee) | #004 |
+| 2.9 | `ContextBuilder` upgrade: read context_items, inject XML summary nodes | #005 |
+| 2.10 | `session_before_compact` override for reactive compaction | #006 |
+| 2.11 | `lcm_grep` tool (FTS5 queries) | #005 |
+| 2.12 | `lcm_describe` tool | #005 |
+| 2.13 | `lcm_expand` upgrade: DAG node retrieval, DAG walk for full reconstruction | #005 |
+| 2.14 | `session_start` reconciliation: JSONL ↔ SQLite sync | #006 |
+| 2.15 | Status bar upgrade: `🟢/🟡/🔴 {pct}% \| {N} summaries (d{D}) \| tail: {freshTailCount}` | #007 |
+| 2.16 | Integration tests with real session fixtures | #007 |
+| 2.17 | Performance tests: context event overhead, compaction latency | #007 |
 
 ### Exit Criteria
 
@@ -257,11 +257,12 @@ Users installing `pi-lcm` on an existing long session need a backfill path:
 ---
 
 ## Open Questions (Blocking or Near-Blocking)
+> All four questions resolved during v0.2 investigation (2026-03-03). See `.megapowers/plans/v02-investigation.md` for full details.
 
-1. **Does `agent_end` fire after every model response, including mid-tool-chain responses?** — Affects leaf compaction timing. Test in Phase 1.
+1. **Does `agent_end` fire after every model response, including mid-tool-chain responses?** ✅ **Resolved:** Fires **once per user prompt**, after all turns complete. Leaf compaction triggered here is correct.
 
-2. **What is the `appendEntry` payload size limit?** — Affects how much summary metadata can be stored for crash recovery. Check pi source.
+2. **What is the `appendEntry` payload size limit?** ✅ **Resolved:** No documented limit — arbitrary JSON per line. Summary metadata (~200–500 bytes) is well within range.
 
-3. **Is `ctx.getContextUsage().contextWindow` available in the `context` event?** — Needed for budget-constrained context trimming. Verify in Phase 1.
+3. **Is `ctx.getContextUsage().contextWindow` available in the `context` event?** ✅ **Resolved:** Yes. `ContextUsage = { tokens: number | null, contextWindow: number, percent: number | null }` — available on all event handlers.
 
-4. **Does `session_start` fire on branch navigation?** — Affects cache invalidation for tree-based sessions. Test in Phase 2.
+4. **Does `session_start` fire on branch navigation?** ✅ **Resolved:** No. Tree navigation fires `session_tree`. Cache rebuild must subscribe to `session_tree` separately (added to #006 scope).

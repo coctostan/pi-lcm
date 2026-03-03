@@ -316,7 +316,7 @@ describe('integration wiring', () => {
     assert.strictEqual(loadCallMatches.length, 1);
 
     const factoryStart = indexSource.indexOf('export default function');
-    const loadDecl = indexSource.indexOf('const config = loadConfig();');
+    const loadDecl = indexSource.indexOf('const resolvedConfig = config ?? loadConfig();');
     const firstHandler = indexSource.indexOf('pi.on(');
 
     assert.ok(factoryStart >= 0, 'factory function missing');

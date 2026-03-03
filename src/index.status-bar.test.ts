@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import extensionSetup from './index.ts';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
+import { DEFAULT_CONFIG } from './config.ts';
 
 describe('src/index.ts status bar wiring (AC 12)', () => {
   it('clears status via ctx.ui.setStatus("lcm", undefined) when strippedCount is 0', async () => {
@@ -15,9 +16,10 @@ describe('src/index.ts status bar wiring (AC 12)', () => {
       registerTool(_tool: any) {},
     } as any;
 
-    extensionSetup(mockPi);
+    extensionSetup(mockPi, { ...DEFAULT_CONFIG });
 
     assert.ok(capturedContextHandler, 'context handler was registered');
+    const handler = capturedContextHandler as (event: any, ctx: any) => Promise<void>;
 
     const calls: Array<[string, string | undefined]> = [];
     const ctx = {
@@ -36,7 +38,7 @@ describe('src/index.ts status bar wiring (AC 12)', () => {
       messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
     };
 
-    await capturedContextHandler(event, ctx);
+    await handler(event, ctx);
 
     assert.deepStrictEqual(calls, [['lcm', undefined]]);
   });
@@ -54,8 +56,9 @@ describe('src/index.ts status bar wiring (AC 11)', () => {
       registerTool(_tool: any) {},
     } as any;
 
-    extensionSetup(mockPi);
+    extensionSetup(mockPi, { ...DEFAULT_CONFIG });
     assert.ok(capturedContextHandler, 'context handler was registered');
+    const handler = capturedContextHandler as (event: any, ctx: any) => Promise<void>;
 
     // Build 35 messages => old zone length 3 with default freshTailCount=32.
     // Put one toolResult in the old zone so strippedCount becomes 1.
@@ -86,7 +89,7 @@ describe('src/index.ts status bar wiring (AC 11)', () => {
     } as any;
 
     const event = { messages };
-    await capturedContextHandler(event, ctx);
+    await handler(event, ctx);
 
     assert.strictEqual(calls.length, 1);
     assert.strictEqual(calls[0][0], 'lcm');
