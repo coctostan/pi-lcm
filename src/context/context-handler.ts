@@ -18,6 +18,9 @@ export interface ContextHandlerResult {
 }
 
 const EMPTY_STATS: ContextHandlerStats = { strippedCount: 0, estimatedTokensSaved: 0 };
+function zeroStats(): ContextHandlerStats {
+  return { ...EMPTY_STATS };
+}
 
 export class ContextHandler {
   private strategy: ContextStrategy;
@@ -33,12 +36,12 @@ export class ContextHandler {
   process(messages: AgentMessage[] | undefined): ContextHandlerResult {
     // Guard: empty/undefined
     if (!messages || messages.length === 0) {
-      return { messages: messages ?? [], stats: { ...EMPTY_STATS } };
+      return { messages: messages ?? [], stats: zeroStats() };
     }
 
     // Guard: all messages within fresh tail
     if (messages.length <= this.config.freshTailCount) {
-      return { messages, stats: { ...EMPTY_STATS } };
+      return { messages, stats: zeroStats() };
     }
 
     const tailStart = messages.length - this.config.freshTailCount;
@@ -68,7 +71,16 @@ export class ContextHandler {
           const origContent = (original as ToolResultMessage).content;
           const resContent = (result as ToolResultMessage).content;
 
+          // Guard: skip messages that were already stripped in a prior call.
+          // Without this, re-processing a session whose old zone contains LCM placeholders
+          // (idempotency path) would double-count them in strippedCount and estimatedTokensSaved.
+          const wasAlreadyStripped =
+            origContent.length === 1 &&
+            origContent[0].type === 'text' &&
+            (origContent[0] as { type: string; text?: string }).text?.startsWith('[Content stripped by LCM.');
+
           if (
+            !wasAlreadyStripped &&
             origContent.length > 0 &&
             resContent.length === 1 &&
             resContent[0].type === 'text' &&
@@ -93,7 +105,7 @@ export class ContextHandler {
       };
     } catch {
       // Fail-safe: return original messages on any error
-      return { messages, stats: { ...EMPTY_STATS } };
+      return { messages, stats: zeroStats() };
     }
   }
 }
