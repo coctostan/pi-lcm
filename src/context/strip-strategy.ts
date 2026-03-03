@@ -29,6 +29,15 @@ export class StripStrategy implements ContextStrategy {
       if (msg.content.length === 0) {
         return msg;
       }
+      // Avoid re-stripping previously stripped placeholders on sequential calls
+      const firstPart = msg.content[0];
+      if (
+        msg.content.length === 1 &&
+        firstPart.type === 'text' &&
+        firstPart.text?.startsWith('[Content stripped by LCM.')
+      ) {
+        return msg;
+      }
       // Store original content; skip stripping if store fails (AC 11)
       const stored = store.set(msg.toolCallId, msg.content);
       if (!stored) {
