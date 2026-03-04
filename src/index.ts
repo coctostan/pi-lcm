@@ -6,14 +6,24 @@ import { ContextHandler } from "./context/context-handler.ts";
 import { StripStrategy } from "./context/strip-strategy.ts";
 import { registerExpandTool } from "./tools/expand.ts";
 import { formatStatusBar } from "./status.ts";
+import { ingestNewMessages } from "./ingestion/ingest.ts";
+import type { Store } from "./store/types.ts";
 
 /**
  * pi-lcm extension entry point.
  * Registers the context handler and lcm_expand tool with a shared ContentStore (AC 15).
  */
-export default function (pi: ExtensionAPI, config?: LCMConfig): void {
+
+/** Internal options for testing — not part of the public API. */
+export interface InternalOptions {
+	dagStore?: Store;
+}
+export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: InternalOptions): void {
 	const resolvedConfig = config ?? loadConfig();
 	const store = new MemoryContentStore();
+
+	// DAG store for Phase 2 message ingestion (set in session_start or injected for tests)
+	let dagStore: Store | null = _internal?.dagStore ?? null;
 
 	// Wire ContextHandler with the shared store (AC 15)
 	const strategy = new StripStrategy();
@@ -35,8 +45,12 @@ export default function (pi: ExtensionAPI, config?: LCMConfig): void {
 	// Milestone 2.x: will initialize SQLite store and reconcile session JSONL
 	pi.on("session_start", async (_event, _ctx) => {});
 
-	// Milestone 2.x: will trigger proactive leaf compaction pass
-	pi.on("agent_end", async (_event, _ctx) => {});
+	// Milestone 2.3: ingest new messages after each agent turn (AC 31)
+	pi.on("agent_end", async (_event, ctx) => {
+		if (dagStore) {
+			ingestNewMessages(dagStore, ctx);
+		}
+	});
 
 	// Milestone 3.x: will intercept large file reads
 	pi.on("tool_result", async (_event, _ctx) => {});
