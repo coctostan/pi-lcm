@@ -4,12 +4,12 @@ import { estimateTokens } from '../summarizer/token-estimator.ts';
 
 type IngestContext = Pick<ExtensionContext, 'sessionManager'>;
 
-const INGESTABLE_ROLES = new Set(['user', 'assistant', 'toolResult']);
+export const INGESTABLE_ROLES = new Set(['user', 'assistant', 'toolResult']);
 
 /**
  * Serialize AgentMessage content into a plain string for storage.
  */
-function serializeMessageContent(message: any): string {
+export function serializeMessageContent(message: any): string {
   const { role, content } = message;
 
   if (role === 'user') {
