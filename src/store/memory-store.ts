@@ -66,6 +66,13 @@ export class MemoryStore implements Store {
     return list.filter(m => m.seq > seq);
   }
 
+  getMessage(id: string): StoredMessage | undefined {
+    this.assertOpen();
+    const conversationId = this.requireConversationId();
+    const list = this.messagesByConversation.get(conversationId) ?? [];
+    return list.find(message => message.id === id);
+  }
+
   getLastIngestedSeq(): number {
     this.assertOpen();
     const conversationId = this.requireConversationId();

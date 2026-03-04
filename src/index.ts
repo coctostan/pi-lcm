@@ -8,6 +8,8 @@ import { registerExpandTool } from "./tools/expand.ts";
 import { formatStatusBar } from "./status.ts";
 import { ingestNewMessages } from "./ingestion/ingest.ts";
 import type { Store } from "./store/types.ts";
+import { runCompaction } from './compaction/engine.ts';
+import type { Summarizer } from './summarizer/summarizer.ts';
 
 /**
  * pi-lcm extension entry point.
@@ -17,6 +19,8 @@ import type { Store } from "./store/types.ts";
 /** Internal options for testing — not part of the public API. */
 export interface InternalOptions {
 	dagStore?: Store;
+	summarizer?: Summarizer;
+	runCompactionFn?: typeof runCompaction;
 }
 export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: InternalOptions): void {
 	const resolvedConfig = config ?? loadConfig();
@@ -24,6 +28,8 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
 
 	// DAG store for Phase 2 message ingestion (set in session_start or injected for tests)
 	let dagStore: Store | null = _internal?.dagStore ?? null;
+	const summarizer = _internal?.summarizer ?? null;
+	const runCompactionFn = _internal?.runCompactionFn ?? runCompaction;
 
 	// Wire ContextHandler with the shared store (AC 15)
 	const strategy = new StripStrategy();
@@ -46,9 +52,31 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
 	pi.on("session_start", async (_event, _ctx) => {});
 
 	// Milestone 2.3: ingest new messages after each agent turn (AC 31)
-	pi.on("agent_end", async (_event, ctx) => {
-		if (dagStore) {
-			ingestNewMessages(dagStore, ctx);
+	pi.on('agent_end', async (_event, ctx) => {
+		if (!dagStore) return;
+
+		ingestNewMessages(dagStore, ctx);
+
+		if (!summarizer) return;
+
+		try {
+			await runCompactionFn(
+				dagStore,
+				summarizer,
+				{
+					freshTailCount: resolvedConfig.freshTailCount,
+					leafChunkTokens: resolvedConfig.leafChunkTokens,
+					leafTargetTokens: resolvedConfig.leafTargetTokens,
+					condensedTargetTokens: resolvedConfig.condensedTargetTokens,
+					condensedMinFanout: resolvedConfig.condensedMinFanout,
+					appendEntry(customType, data) {
+						pi.appendEntry(customType, data);
+					},
+				},
+				new AbortController().signal,
+			);
+		} catch (err) {
+			console.error('pi-lcm: compaction error', err);
 		}
 	});
 

@@ -68,6 +68,7 @@ export interface Store {
   // Message operations
   ingestMessage(msg: IngestableMessage): void;
   getMessagesAfter(seq: number): StoredMessage[];
+  getMessage(id: string): StoredMessage | undefined;
   getLastIngestedSeq(): number;
 
   // Summary operations

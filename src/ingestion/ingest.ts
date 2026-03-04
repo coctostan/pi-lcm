@@ -54,7 +54,7 @@ function serializeMessageContent(message: any): string {
 export function ingestNewMessages(store: Store, ctx: IngestContext): number {
   const branch = ctx.sessionManager.getBranch();
   const lastSeq = store.getLastIngestedSeq();
-  let count = 0;
+  const newlyIngestedIds: string[] = [];
 
   for (let i = 0; i < branch.length; i++) {
     const entry = branch[i]!;
@@ -84,8 +84,16 @@ export function ingestNewMessages(store: Store, ctx: IngestContext): number {
       createdAt: new Date(entry.timestamp).getTime(),
     });
 
-    count++;
+    newlyIngestedIds.push(entry.id);
   }
 
-  return count;
+  if (newlyIngestedIds.length > 0) {
+    const nextContextItems = [
+      ...store.getContextItems(),
+      ...newlyIngestedIds.map(messageId => ({ kind: 'message' as const, messageId })),
+    ];
+    store.replaceContextItems(nextContextItems);
+  }
+
+  return newlyIngestedIds.length;
 }

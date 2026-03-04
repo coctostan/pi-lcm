@@ -138,6 +138,31 @@ describe('SqliteStore -- sqlite-specific behavior', () => {
     store.close();
   });
 
+  it('getMessage returns a stored message by id and undefined when missing (AC 3)', () => {
+    const path = dbPath(`get-message-${Date.now()}.sqlite`);
+    const store = new SqliteStore(path);
+    store.openConversation('sess_1', '/tmp');
+
+    store.ingestMessage({
+      id: 'm0',
+      seq: 0,
+      role: 'user',
+      content: 'hello sqlite',
+      tokenCount: 2,
+      createdAt: 1,
+    });
+
+    const found = (store as any).getMessage('m0');
+    assert.ok(found);
+    assert.strictEqual(found.id, 'm0');
+    assert.strictEqual(found.content, 'hello sqlite');
+
+    const missing = (store as any).getMessage('missing');
+    assert.strictEqual(missing, undefined);
+
+    store.close();
+  });
+
   it('re-opening a matching-version DB does NOT re-execute SCHEMA_SQL (schema_version.createdAt is stable)', () => {
     const path = dbPath(`reopen-${Date.now()}.sqlite`);
 

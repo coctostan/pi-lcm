@@ -85,4 +85,129 @@ describe('agent_end handler (AC 31)', () => {
     // Should not throw even with no store
     await ref.agentEndHandler!({ messages: [] }, mockCtx);
   });
+
+  it('calls runCompaction after ingestNewMessages completes, passing store/summarizer/config/signal (AC 28)', async () => {
+    const ref: { agentEndHandler: ((event: any, ctx: any) => Promise<void>) | null } = {
+      agentEndHandler: null,
+    };
+
+    const mockPi = {
+      on(event: string, handler: any) {
+        if (event === 'agent_end') ref.agentEndHandler = handler;
+      },
+      registerTool(_tool: any) {},
+      appendEntry(_customType: string, _data: any) {},
+    } as any;
+
+    const store = new MemoryStore();
+    store.openConversation('test-sess', '/tmp/test');
+
+    const calls: Array<{ messageCountAtCall: number; signalType: string }> = [];
+
+    const fakeSummarizer = {
+      async summarize(): Promise<string> {
+        return 'summary';
+      },
+    } as any;
+
+    const runCompactionFn = async (passedStore: any, _summarizer: any, _config: any, signal: AbortSignal) => {
+      calls.push({
+        messageCountAtCall: passedStore.getMessagesAfter(-1).length,
+        signalType: signal.constructor.name,
+      });
+      return {
+        actionTaken: false,
+        summariesCreated: 0,
+        messagesSummarized: 0,
+        noOpReasons: ['eligible_leaves_below_min'],
+      };
+    };
+
+    extensionSetup(mockPi, undefined, {
+      dagStore: store,
+      summarizer: fakeSummarizer,
+      runCompactionFn,
+    } as any);
+
+    const entries: SessionEntry[] = [
+      {
+        type: 'message',
+        id: 'entry-1',
+        parentId: null,
+        timestamp: new Date().toISOString(),
+        message: {
+          role: 'user',
+          content: 'Hello from compaction wiring test',
+          timestamp: Date.now(),
+        },
+      } as SessionEntry,
+    ];
+
+    const mockCtx = {
+      sessionManager: { getBranch: () => entries },
+      ui: { setStatus(_key: string, _text: string | undefined) {} },
+      getContextUsage() { return undefined; },
+    } as any;
+
+    await ref.agentEndHandler!({ messages: [] }, mockCtx);
+
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(calls[0]!.messageCountAtCall, 1, 'compaction should run after ingestion');
+    assert.strictEqual(calls[0]!.signalType, 'AbortSignal');
+
+    store.close();
+  });
+
+  it('catches and logs runCompaction errors without propagating from agent_end (AC 29)', async () => {
+    const ref: { agentEndHandler: ((event: any, ctx: any) => Promise<void>) | null } = {
+      agentEndHandler: null,
+    };
+
+    const mockPi = {
+      on(event: string, handler: any) {
+        if (event === 'agent_end') ref.agentEndHandler = handler;
+      },
+      registerTool(_tool: any) {},
+      appendEntry(_customType: string, _data: any) {},
+    } as any;
+
+    const store = new MemoryStore();
+    store.openConversation('test-sess', '/tmp/test');
+
+    const fakeSummarizer = {
+      async summarize(): Promise<string> {
+        return 'summary';
+      },
+    } as any;
+
+    const originalError = console.error;
+    const logged: any[] = [];
+    console.error = (...args: any[]) => {
+      logged.push(args);
+    };
+
+    try {
+      extensionSetup(mockPi, undefined, {
+        dagStore: store,
+        summarizer: fakeSummarizer,
+        runCompactionFn: async () => {
+          throw new Error('boom from runCompaction');
+        },
+      } as any);
+
+      const mockCtx = {
+        sessionManager: { getBranch: () => [] },
+        ui: { setStatus(_key: string, _text: string | undefined) {} },
+        getContextUsage() { return undefined; },
+      } as any;
+
+      await ref.agentEndHandler!({ messages: [] }, mockCtx);
+
+      assert.ok(logged.length > 0, 'expected compaction error to be logged');
+      assert.ok(String(logged[0]![0]).includes('pi-lcm: compaction error'));
+    } finally {
+      console.error = originalError;
+      store.close();
+    }
+  });
 });

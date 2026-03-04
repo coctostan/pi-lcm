@@ -182,6 +182,32 @@ export class SqliteStore implements Store {
     }));
   }
 
+  getMessage(id: string): StoredMessage | undefined {
+    this.assertOpen();
+    const conversationId = this.requireConversationId();
+
+    const row = this.db
+      .prepare(
+        `SELECT id, conversationId, seq, role, toolName, content, tokenCount, createdAt
+         FROM messages
+         WHERE conversationId = ? AND id = ?`
+      )
+      .get(conversationId, id) as any;
+
+    if (!row) return undefined;
+
+    return {
+      id: row.id,
+      conversationId: row.conversationId,
+      seq: row.seq,
+      role: row.role,
+      toolName: row.toolName ?? undefined,
+      content: row.content,
+      tokenCount: row.tokenCount,
+      createdAt: row.createdAt,
+    };
+  }
+
   getLastIngestedSeq(): number {
     this.assertOpen();
     const conversationId = this.requireConversationId();
