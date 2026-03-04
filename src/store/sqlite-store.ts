@@ -294,6 +294,20 @@ export class SqliteStore implements Store {
     }
   }
 
+  getSummaryChildIds(parentId: string): string[] {
+    this.assertOpen();
+    const rows = this.db
+      .prepare(
+        `SELECT childSummaryId
+         FROM summary_parents
+         WHERE parentSummaryId = ?
+         ORDER BY rowid ASC`
+      )
+      .all(parentId) as Array<{ childSummaryId: string }>;
+
+    return rows.map(row => row.childSummaryId);
+  }
+
   getContextItems(): ContextItem[] {
     this.assertOpen();
     const conversationId = this.requireConversationId();

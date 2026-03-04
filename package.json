@@ -13,6 +13,9 @@
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*"
   },
+  "dependencies": {
+    "zod": "^3.24.0"
+  },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "*",
     "typescript": "^5.7.3",
