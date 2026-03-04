@@ -85,6 +85,7 @@ export interface Store {
   expandSummary(summaryId: string): string;
   grepMessages(pattern: string, mode: 'fulltext' | 'regex'): GrepResult[];
   describeSummary(summaryId: string): SummaryMeta;
+  getSummaryChildIds(parentId: string): string[];
 
   // Cleanup
   close(): void;

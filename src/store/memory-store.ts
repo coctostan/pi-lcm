@@ -119,6 +119,13 @@ export class MemoryStore implements Store {
     this.summaryParents.set(parentId, set);
   }
 
+  getSummaryChildIds(parentId: string): string[] {
+    this.assertOpen();
+    const children = this.summaryParents.get(parentId);
+    if (!children) return [];
+    return Array.from(children);
+  }
+
   getContextItems(): ContextItem[] {
     this.assertOpen();
     const conversationId = this.requireConversationId();
