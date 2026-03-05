@@ -13,9 +13,20 @@ import type {
 } from './types.ts';
 import { StoreClosedError } from './types.ts';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema.ts';
+import { estimateTokens } from '../summarizer/token-estimator.ts';
 
 function isMemoryPath(path: string): boolean {
   return path === ':memory:';
+}
+/**
+ * Wrap each whitespace-delimited token in double quotes so FTS5 treats
+ * them as phrase literals — preventing operators like `-`, `:`, `*`, `^`
+ * from being interpreted. Embedded double-quotes are escaped by doubling.
+ */
+function sanitizeFts5Query(pattern: string): string {
+  const tokens = pattern.trim().split(/\s+/).filter(t => t.length > 0);
+  if (tokens.length === 0) return '""';
+  return tokens.map(t => `"${t.replace(/"/g, '""')}"`).join(' ');
 }
 
 export class SqliteStore implements Store {
@@ -224,6 +235,8 @@ export class SqliteStore implements Store {
     const conversationId = this.requireConversationId();
 
     const summaryId = randomUUID();
+    // Always compute tokenCount from content — do not trust caller-provided values.
+    const tokenCount = estimateTokens(summary.content);
     this.db
       .prepare(
         `INSERT INTO summaries(summaryId, conversationId, depth, kind, content, tokenCount, earliestAt, latestAt, descendantCount, createdAt)
@@ -235,7 +248,7 @@ export class SqliteStore implements Store {
         summary.depth,
         summary.kind,
         summary.content,
-        summary.tokenCount,
+        tokenCount,
         summary.earliestAt,
         summary.latestAt,
         summary.descendantCount,
@@ -369,6 +382,7 @@ export class SqliteStore implements Store {
     const conversationId = this.requireConversationId();
 
     if (mode === 'fulltext') {
+      const sanitized = sanitizeFts5Query(pattern);
       const messageRows = this.db
         .prepare(
           `SELECT m.id AS id, m.content AS content
@@ -376,7 +390,7 @@ export class SqliteStore implements Store {
            JOIN messages m ON m.rowid = f.rowid
            WHERE m.conversationId = ? AND messages_fts MATCH ?`
         )
-        .all(conversationId, pattern) as any[];
+        .all(conversationId, sanitized) as any[];
 
       const summaryRows = this.db
         .prepare(
@@ -385,7 +399,7 @@ export class SqliteStore implements Store {
            JOIN summaries s ON s.rowid = f.rowid
            WHERE s.conversationId = ? AND summaries_fts MATCH ?`
         )
-        .all(conversationId, pattern) as any[];
+        .all(conversationId, sanitized) as any[];
 
       return [
         ...messageRows.map(r => ({ kind: 'message' as const, id: r.id, snippet: String(r.content).slice(0, 200) })),

@@ -10,6 +10,8 @@ function textResult(text: string): AgentToolResult<undefined> {
   return { content: [{ type: 'text', text }], details: undefined };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function createExpandExecute(
   store: ContentStore,
   config: { maxExpandTokens: number },
@@ -41,6 +43,26 @@ export function createExpandExecute(
         // - sum_ IDs when no DAG store is available
         const content = store.get(id);
         if (content === undefined) {
+          if (dagStore) {
+            if (UUID_RE.test(id)) {
+              try {
+                const summaryContent = dagStore.expandSummary(id);
+                const truncated = truncateToTokenBudget(summaryContent, config.maxExpandTokens);
+                const output = { id, source: 'dag' as const, content: truncated };
+                ExpandResultSchema.parse(output);
+                return textResult(JSON.stringify(output));
+              } catch {
+                // Summary not found: continue to message fallback.
+              }
+            }
+            const msg = dagStore.getMessage(id);
+            if (msg !== undefined) {
+              const truncated = truncateToTokenBudget(msg.content, config.maxExpandTokens);
+              const output = { id, source: 'session' as const, content: truncated };
+              ExpandResultSchema.parse(output);
+              return textResult(JSON.stringify(output));
+            }
+          }
           const errorOutput = { error: `No content found for ID "${id}"`, id };
           ExpandResultSchema.parse(errorOutput);
           return textResult(JSON.stringify(errorOutput));
