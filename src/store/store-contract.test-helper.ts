@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Store } from './types.ts';
 import { StoreClosedError } from './types.ts';
+import { estimateTokens } from '../summarizer/token-estimator.ts';
 
 export function runStoreContractTests(name: string, factory: () => Store) {
   describe(`${name} — Store contract`, () => {
@@ -56,12 +57,14 @@ export function runStoreContractTests(name: string, factory: () => Store) {
     it('insertSummary/getSummary roundtrip; expandSummary returns content; describeSummary omits content', () => {
       const store = factory();
       store.openConversation('sess_1', '/tmp/project');
+      const content = 'SUMMARY CONTENT';
+      const expectedTokenCount = estimateTokens(content);
 
       const summaryId = store.insertSummary({
         depth: 0,
         kind: 'leaf',
-        content: 'SUMMARY CONTENT',
-        tokenCount: 123,
+        content,
+        tokenCount: expectedTokenCount,
         earliestAt: 10,
         latestAt: 20,
         descendantCount: 2,
@@ -73,14 +76,14 @@ export function runStoreContractTests(name: string, factory: () => Store) {
       assert.strictEqual(stored.summaryId, summaryId);
       assert.strictEqual(stored.depth, 0);
       assert.strictEqual(stored.kind, 'leaf');
-      assert.strictEqual(stored.content, 'SUMMARY CONTENT');
-      assert.strictEqual(stored.tokenCount, 123);
+      assert.strictEqual(stored.content, content);
+      assert.strictEqual(stored.tokenCount, expectedTokenCount);
       assert.strictEqual(stored.earliestAt, 10);
       assert.strictEqual(stored.latestAt, 20);
       assert.strictEqual(stored.descendantCount, 2);
       assert.strictEqual(stored.createdAt, 30);
 
-      assert.strictEqual(store.expandSummary(summaryId), 'SUMMARY CONTENT');
+      assert.strictEqual(store.expandSummary(summaryId), content);
 
       const meta = store.describeSummary(summaryId);
       assert.strictEqual(meta.summaryId, summaryId);
