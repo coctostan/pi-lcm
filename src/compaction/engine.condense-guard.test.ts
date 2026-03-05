@@ -3,13 +3,17 @@ import assert from 'node:assert/strict';
 import { MemoryStore } from '../store/memory-store.ts';
 import { runCompaction } from './engine.ts';
 import type { Summarizer } from '../summarizer/summarizer.ts';
+import { estimateTokens } from '../summarizer/token-estimator.ts';
 
 function addLeafSummary(store: MemoryStore, id: number): string {
+  const content = 'x'.repeat(35);
+  const tokenCount = estimateTokens(content);
+  assert.strictEqual(tokenCount, 12, 'precondition: guard fixture token count should be stable');
   return store.insertSummary({
     depth: 0,
     kind: 'leaf',
-    content: `leaf-${id}`,
-    tokenCount: 10,
+    content,
+    tokenCount,
     earliestAt: id,
     latestAt: id,
     descendantCount: 1,

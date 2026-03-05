@@ -182,4 +182,101 @@ describe('PiSummarizer', () => {
     assert.ok(capturedOptions, 'Options should have been passed to complete()');
     assert.strictEqual(capturedOptions.signal, ac.signal, 'Signal should be propagated to complete()');
   });
+
+  it('resolves apiKey via modelRegistry.getApiKey and passes it in options (auth bridge)', async () => {
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic' };
+    let capturedOptions: any = null;
+    const mockComplete = async (_model: any, _context: any, options?: any) => {
+      capturedOptions = options;
+      return {
+        role: 'assistant' as const,
+        content: [{ type: 'text' as const, text: 'summary' }],
+        api: 'anthropic-messages' as const,
+        provider: 'anthropic',
+        model: 'claude-haiku-4-5',
+        usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: 'stop' as const,
+        timestamp: Date.now(),
+      };
+    };
+
+    const mockRegistry = {
+      find: () => mockModel,
+      getApiKey: async (_m: any) => 'test-api-key-abc123',
+    };
+
+    const summarizer = new PiSummarizer({
+      modelRegistry: mockRegistry as any,
+      summaryModel: 'anthropic/claude-haiku-4-5',
+      completeFn: mockComplete as any,
+    });
+
+    await summarizer.summarize('Some content', { depth: 0, kind: 'leaf', maxOutputTokens: 200 });
+
+    assert.strictEqual(capturedOptions.apiKey, 'test-api-key-abc123',
+      'apiKey from modelRegistry.getApiKey should be forwarded to completeFn options');
+  });
+
+  it('does not add apiKey to options when getApiKey is absent from registry', async () => {
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic' };
+    let capturedOptions: any = null;
+    const mockComplete = async (_model: any, _context: any, options?: any) => {
+      capturedOptions = options;
+      return {
+        role: 'assistant' as const,
+        content: [{ type: 'text' as const, text: 'summary' }],
+        api: 'anthropic-messages' as const,
+        provider: 'anthropic',
+        model: 'claude-haiku-4-5',
+        usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: 'stop' as const,
+        timestamp: Date.now(),
+      };
+    };
+
+    const summarizer = new PiSummarizer({
+      modelRegistry: { find: () => mockModel } as any,
+      summaryModel: 'anthropic/claude-haiku-4-5',
+      completeFn: mockComplete as any,
+    });
+
+    await summarizer.summarize('Some content', { depth: 0, kind: 'leaf', maxOutputTokens: 200 });
+
+    assert.strictEqual(capturedOptions.apiKey, undefined,
+      'apiKey should not be set when modelRegistry has no getApiKey method');
+  });
+
+  it('throws when response contains errorMessage (surfaces API auth / network errors)', async () => {
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic' };
+    const mockComplete = async () => ({
+      role: 'assistant' as const,
+      content: [] as any[],
+      api: 'anthropic-messages' as const,
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      stopReason: 'error' as const,
+      timestamp: Date.now(),
+      errorMessage: 'Could not resolve authentication method.',
+    });
+
+    const summarizer = new PiSummarizer({
+      modelRegistry: { find: () => mockModel } as any,
+      summaryModel: 'anthropic/claude-haiku-4-5',
+      completeFn: mockComplete as any,
+    });
+
+    await assert.rejects(
+      () => summarizer.summarize('content', { depth: 0, kind: 'leaf', maxOutputTokens: 200 }),
+      (err: any) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes('Could not resolve authentication'),
+          `Expected auth error message, got: ${err.message}`);
+        return true;
+      },
+    );
+  });
 });

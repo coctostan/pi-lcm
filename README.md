@@ -73,6 +73,54 @@ Example — tighten the threshold and reduce expand budget:
 
 ---
 
+## Debug Harness (isolated target sessions)
+
+When pi-lcm is disabled in your normal settings (controller session), you can still run reproducible test sessions that load only pi-lcm:
+
+```bash
+bash scripts/lcm-harness.sh -s /tmp/pi-lcm-test-1 -t 50
+```
+
+The harness launches `pi` with `--no-extensions -e src/index.ts --session-dir <dir>` so it doesn't depend on your global extension state. It also writes a timestamped log file into the session directory.
+By default it runs in **batch mode** (one `pi` process with many prompts), which is better for debugging async compaction behavior. Use `--mode loop` to run one process per turn when you specifically want cold-start/restart behavior.
+Use `--resume` to keep testing an existing session without creating a new initial turn.
+
+If you also want `pi-cmux` tools available in the target session, add `--with-cmux`:
+
+```bash
+npm run harness:lcm:with-cmux -- \
+  --prompts-file scripts/prompts/cmux-tool-check.txt
+```
+
+Quick validation command (JSON mode, confirms `cmux_workspace` can be called):
+
+```bash
+npm run harness:lcm:cmux-tool-check
+```
+
+For more realistic scripted traffic, use a prompt file:
+
+```bash
+npm run harness:lcm:real-use -- \
+  -s /tmp/pi-lcm-real-use \
+  --pi-arg "--model" --pi-arg "anthropic/claude-haiku-4-5"
+```
+
+To run the same real-use sequence with both `pi-lcm` and `pi-cmux` loaded in the target session:
+
+```bash
+npm run harness:lcm:real-use:with-cmux
+```
+
+For human-like interactive testing inside **cmux**, use:
+
+```bash
+npm run harness:lcm:cmux
+```
+
+This launches `pi` in a cmux split, sends prompts from `scripts/prompts/lcm-real-use.txt`, captures screen snapshots, and runs `scripts/inspect-live-db.ts` at the end.
+By default, `scripts/lcm-cmux-real-use.sh` now loads both `pi-lcm` and `pi-cmux` extensions in the launched target `pi` process. Use `--without-cmux` if you need an lcm-only run.
+
 ## Tools
 
 ### `lcm_expand(id)`
