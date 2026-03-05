@@ -82,4 +82,73 @@ describe('formatStatusBar', () => {
     assert.ok(text.startsWith('🔴'), `expected 🔴 prefix, got: ${text}`);
     assert.ok(text.includes('85%'), `expected percent segment, got: ${text}`);
   });
+
+  it('returns summary format with 🟢 when summaryCount > 0 and percent < 60 (AC 6)', () => {
+    const stats: ContextHandlerStats = {
+      strippedCount: 0,
+      estimatedTokensSaved: 0,
+      summaryCount: 5,
+      maxDepth: 2,
+    };
+    const usage: ContextUsage = { tokens: 1000, contextWindow: 2000, percent: 50 };
+
+    const text = formatStatusBar(stats, usage, 32);
+
+    assert.strictEqual(text, '🟢 50% | 5 summaries (d2) | tail: 32');
+  });
+
+  it('returns summary format with 🟡 when summaryCount > 0 and percent in 60–84 (AC 6)', () => {
+    const stats: ContextHandlerStats = {
+      strippedCount: 0,
+      estimatedTokensSaved: 0,
+      summaryCount: 3,
+      maxDepth: 0,
+    };
+    const usage: ContextUsage = { tokens: 1400, contextWindow: 2000, percent: 70 };
+
+    const text = formatStatusBar(stats, usage, 8);
+
+    assert.strictEqual(text, '🟡 70% | 3 summaries (d0) | tail: 8');
+  });
+
+  it('returns summary format with 🔴 when summaryCount > 0 and percent >= 85 (AC 6)', () => {
+    const stats: ContextHandlerStats = {
+      strippedCount: 0,
+      estimatedTokensSaved: 0,
+      summaryCount: 8,
+      maxDepth: 1,
+    };
+    const usage: ContextUsage = { tokens: 1800, contextWindow: 2000, percent: 90 };
+
+    const text = formatStatusBar(stats, usage, 16);
+
+    assert.strictEqual(text, '🔴 90% | 8 summaries (d1) | tail: 16');
+  });
+
+  it('returns summary format without percent when summaryCount > 0 and contextUsage is undefined (AC 7)', () => {
+    const stats: ContextHandlerStats = {
+      strippedCount: 0,
+      estimatedTokensSaved: 0,
+      summaryCount: 3,
+      maxDepth: 1,
+    };
+
+    const text = formatStatusBar(stats, undefined, 32);
+
+    assert.strictEqual(text, '🟢 3 summaries (d1) | tail: 32');
+  });
+
+  it('returns summary format without percent when summaryCount > 0 and percent is null (AC 7)', () => {
+    const stats: ContextHandlerStats = {
+      strippedCount: 0,
+      estimatedTokensSaved: 0,
+      summaryCount: 5,
+      maxDepth: 0,
+    };
+    const usage: ContextUsage = { tokens: null, contextWindow: 2000, percent: null };
+
+    const text = formatStatusBar(stats, usage, 8);
+
+    assert.strictEqual(text, '🟢 5 summaries (d0) | tail: 8');
+  });
 });

@@ -25,12 +25,19 @@ export class ContextBuilder {
     const inputMessages = messages ?? [];
     const assembled: AgentMessage[] = [];
     let strippedCount = 0;
+    let summaryCount = 0;
+    let maxDepth = 0;
 
     for (const item of contextItems) {
       if (item.kind === 'summary') {
         const summary = this.dagStore.getSummary(item.summaryId);
         if (!summary) {
           continue;
+        }
+
+        summaryCount++;
+        if (summary.depth > maxDepth) {
+          maxDepth = summary.depth;
         }
 
         const block: SummaryBlock = {
@@ -72,6 +79,8 @@ export class ContextBuilder {
     const stats: ContextHandlerStats = {
       strippedCount,
       estimatedTokensSaved: 0,
+      summaryCount,
+      maxDepth: summaryCount > 0 ? maxDepth : undefined,
     };
 
     return { messages: assembled, stats };
