@@ -147,6 +147,7 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
       hasDagStore: Boolean(dagStore),
       hasSummarizer: Boolean(summarizer),
     });
+    console.warn(`pi-lcm: config — freshTailCount=${resolvedConfig.freshTailCount}, condensedMinFanout=${resolvedConfig.condensedMinFanout}. Leaf summaries start after turn ~${resolvedConfig.freshTailCount + 1}. Condensation activates after ~${resolvedConfig.condensedMinFanout} leaf summaries accumulate.`);
     const runIntegrity = (activeStore: Store) => {
       const warnings = checkIntegrity(activeStore);
       for (const w of warnings) {
