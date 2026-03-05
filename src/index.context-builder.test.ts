@@ -105,7 +105,7 @@ describe('src/index.ts — conditional tool registration (AC 25)', () => {
     assert.ok(registeredTools.includes('lcm_describe'), 'lcm_describe should be registered with DAG Store');
   });
 
-  it('does NOT register lcm_grep and lcm_describe when no DAG Store', () => {
+  it('registers lcm_grep and lcm_describe eagerly even when no DAG Store (gated by dagReady)', () => {
     const registeredTools: string[] = [];
     const mockPi = {
       on(_event: string, _handler: any) {},
@@ -113,12 +113,10 @@ describe('src/index.ts — conditional tool registration (AC 25)', () => {
         registeredTools.push(tool.name);
       },
     } as any;
-
     extensionSetup(mockPi);
-
     assert.ok(registeredTools.includes('lcm_expand'), 'lcm_expand should always be registered');
-    assert.ok(!registeredTools.includes('lcm_grep'), 'lcm_grep should NOT be registered without DAG Store');
-    assert.ok(!registeredTools.includes('lcm_describe'), 'lcm_describe should NOT be registered without DAG Store');
+    assert.ok(registeredTools.includes('lcm_grep'), 'lcm_grep should be registered eagerly (gated by dagReady)');
+    assert.ok(registeredTools.includes('lcm_describe'), 'lcm_describe should be registered eagerly (gated by dagReady)');
   });
 
   it('keeps legacy plain-text lcm_expand output when no DAG Store is available (AC 28 guard)', async () => {

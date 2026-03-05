@@ -2,7 +2,12 @@
 
 ## What It Does
 
-Long coding sessions accumulate context noise: tool results from hours ago inflate the context window without helping the model. pi-lcm strips tool results older than `freshTailCount` turns and makes them retrievable on demand via the `lcm_expand` tool, keeping the active context lean without losing any information. Sessions shorter than `freshTailCount` turns see zero behavioral difference from vanilla pi.
+Long coding sessions accumulate context noise: tool results from hours ago inflate the context window without helping the model. pi-lcm manages this automatically:
+
+- **Phase 1 (active):** Strips tool results older than `freshTailCount` turns and makes them retrievable via `lcm_expand`
+- **Phase 2 (implemented, wiring in progress):** Summarizes older message spans into a hierarchical SQLite DAG using a cheap model (Gemini Flash). The model sees structured summaries instead of placeholders. Includes `lcm_grep` for searching history and `lcm_describe` for inspecting summary nodes.
+
+Sessions shorter than `freshTailCount` turns see zero behavioral difference from vanilla pi.
 
 ---
 
@@ -11,13 +16,15 @@ Long coding sessions accumulate context noise: tool results from hours ago infla
 ```
 context event fires
   │
-  ├─ strippedCount == 0 AND below contextThreshold?
+  ├─ below freshTailCount messages?
   │    └─ return unchanged (zero cost)
   │
-  └─ above contextThreshold OR entries already stripped?
-       ├─ strip old tool results (replace with placeholder)
-       ├─ register lcm_expand tool
-       └─ pass curated context to LLM
+  └─ above threshold?
+       ├─ Phase 2 (DAG available): inject XML summary nodes for older spans
+       │    └─ summaries created async in agent_end via Gemini Flash
+       │
+       └─ Phase 1 (no DAG): strip old tool results (replace with placeholder)
+            └─ register lcm_expand tool for retrieval
 ```
 
 ---
@@ -44,9 +51,14 @@ Restart pi to apply.
 
 | Field | Default | Description |
 |---|---|---|
-| `freshTailCount` | `32` | Number of most-recent turns treated as "fresh" — never stripped |
+| `freshTailCount` | `32` | Number of most-recent turns treated as "fresh" — never stripped or summarized |
 | `maxExpandTokens` | `4000` | Token budget returned by a single `lcm_expand` call |
-| `contextThreshold` | `0.75` | Context usage fraction (0–1) at which stripping activates |
+| `contextThreshold` | `0.75` | Context usage fraction (0–1) at which stripping/summarization activates |
+| `leafChunkTokens` | `20000` | Max source tokens per leaf summary chunk |
+| `leafTargetTokens` | `1200` | Target size for leaf summaries |
+| `condensedTargetTokens` | `2000` | Target size for condensed summaries |
+| `condensedMinFanout` | `4` | Min summaries per condensed node before triggering condensation |
+| `summaryModel` | `google/gemini-2.5-flash` | Model used for summarization (cheap model recommended) |
 
 Config file path: `~/.pi/agent/extensions/pi-lcm.config.json`
 
@@ -65,46 +77,55 @@ Example — tighten the threshold and reduce expand budget:
 
 ### `lcm_expand(id)`
 
-Retrieves the full content of a stripped tool result. When an entry is stripped, the model sees a placeholder like:
+Retrieves the full content of a stripped tool result or summary node. When content is summarized, the model sees a placeholder or XML summary node with an ID. Call `lcm_expand` to fetch the original content, up to `maxExpandTokens` tokens.
 
-```
-[Content available via lcm_expand("abc123")]
-```
+### `lcm_grep(pattern)` *(Phase 2)*
 
-The model calls `lcm_expand("abc123")` to fetch the original content, up to `maxExpandTokens` tokens.
+Searches across all messages and summaries in the session using FTS5 full-text search or regex. Use to find when something was mentioned, decided, or modified earlier.
 
-`lcm_expand` is **only registered when at least one entry has been stripped** — it does not appear in the tool list for short, unaffected sessions.
+### `lcm_describe(summaryId)` *(Phase 2)*
+
+Inspects a summary node's metadata (depth, kind, time range, message count, token count) without retrieving full content. Use before `lcm_expand` to check relevance.
 
 ---
 
 ## Status Bar
 
-The status bar is **hidden when no entries have been stripped**.
+The status bar is **hidden when no entries have been stripped or summarized**.
 
-When entries have been stripped but context usage data is unavailable:
+Phase 1 format (no DAG):
+```
+🟢 42% | 3 stripped | tail: 32
+```
 
+Phase 2 format (DAG active):
 ```
-🟢 3 stripped | tail: 32
+🟢 45% | 8 summaries (d1) | tail: 32
 ```
 
-When context usage data is available, a usage percentage and icon are shown:
-
-```
-🟢 42% | 3 stripped | tail: 32   ← below 60%
-🟡 72% | 3 stripped | tail: 32   ← 60–84%
-🔴 91% | 3 stripped | tail: 32   ← 85%+
-```
+Color thresholds:
+- 🟢 below 50%
+- 🟡 50–80%
+- 🔴 above 80%
 
 ---
 
-## v0.1 Limitations
+## Architecture
 
-- **Placeholder, not summary.** Stripped entries are replaced with a short placeholder — the model sees only that content exists, not what it says. Call `lcm_expand` to retrieve it.
-- **In-memory store.** The entry store lives in memory and resets on pi restart. Calling `lcm_expand` for an entry from a previous session returns "not found".
-- **Tool results only.** Only tool results are stripped in v0.1. User messages and assistant messages are never stripped.
+- **SQLite store** uses `node:sqlite` (`DatabaseSync`) — built into Node.js 22.5+, no native dependencies
+- **Summary DAG** with leaf (depth 0) and condensed (depth 1+) nodes
+- **Three-level escalation** guarantees convergence: detail-preserving → aggressive → deterministic truncation
+- **Depth-aware prompts** for leaf vs. condensed summaries at each depth tier
+- **Session crash recovery** via `session_start` reconciliation of SQLite ↔ session JSONL
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for full details.
 
 ---
 
-## Roadmap
+## Current Status
 
-See [ROADMAP.md](./ROADMAP.md) for planned improvements.
+- **Phase 1:** ✅ Complete — zero-cost context filtering
+- **Phase 2:** ✅ Implemented and tested (297 tests) — not yet wired for production use (see [#011](https://github.com/your-org/pi-lcm/issues/11))
+- **Phase 3:** Planned — large file interception
+
+See [ROADMAP.md](./ROADMAP.md) for the full plan.

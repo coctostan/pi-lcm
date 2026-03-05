@@ -1,7 +1,7 @@
 # PRD: pi-lcm
 
-**Version:** 0.1 (pre-implementation)
-**Status:** Draft
+**Version:** 0.2
+**Status:** Phase 1 + Phase 2 implemented
 **Related:** [VISION.md](./VISION.md), [ARCHITECTURE.md](./ARCHITECTURE.md), [ROADMAP.md](./ROADMAP.md)
 
 ---

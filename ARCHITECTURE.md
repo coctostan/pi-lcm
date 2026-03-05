@@ -1,6 +1,6 @@
 # ARCHITECTURE: pi-lcm
 
-**Version:** 0.1 (pre-implementation)
+**Version:** 0.2
 **Related:** [VISION.md](./VISION.md), [PRD.md](./PRD.md), [ROADMAP.md](./ROADMAP.md)
 
 ---
@@ -384,49 +384,50 @@ Deeper nodes additionally include child summary IDs:
 
 ---
 
-## Module Structure (Proposed)
+## Module Structure
 
 ```
 src/
   index.ts              # Extension entry point — registers events and tools
   config.ts             # Config schema, defaults, loader
+  schemas.ts            # Zod schemas for store types
+  status.ts             # Status bar formatting
+  types.ts              # Re-exports for public API
   store/
-    schema.sql          # SQLite schema (embedded as string)
-    store.ts            # Store interface (injectable for tests)
-    sqlite-store.ts     # SQLite implementation via better-sqlite3
+    index.ts            # Store barrel export
+    types.ts            # Store interface + types
+    schema.ts           # SQLite schema (embedded as string)
+    sqlite-store.ts     # SQLite implementation via node:sqlite (DatabaseSync)
     memory-store.ts     # In-memory implementation for tests
+    store-contract.test-helper.ts  # Shared contract tests for Store implementations
   context/
-    builder.ts          # ContextBuilder — assembles active context per turn
-    budget.ts           # Token budget math, threshold checks
-    xml.ts              # Summary XML formatting
+    content-store.ts    # In-memory content store for Phase 1 stripped entries
+    context-builder.ts  # ContextBuilder — assembles active context per turn
+    context-handler.ts  # ContextHandler — Phase 1 strip logic
+    strip-strategy.ts   # Strip strategy interface + implementation
   compaction/
     engine.ts           # CompactionEngine — leaf + condensation orchestration
-    escalation.ts       # Three-level escalation logic
-    prompts.ts          # Depth-aware prompt templates
+    chunk-selector.ts   # Chunk selection logic for leaf + condensation passes
+    types.ts            # Compaction types
   summarizer/
-    summarizer.ts       # Summarizer interface
-    pi-summarizer.ts    # Implementation via pi-ai complete()
-    token-estimator.ts  # Fast token count estimation (tiktoken or char-based)
+    summarizer.ts       # Summarizer interface + PiSummarizer implementation
+    prompts.ts          # Depth-aware prompt templates
+    format.ts           # Summary formatting utilities
+    token-estimator.ts  # Fast token count estimation (char / 3.5 with safety margin)
+  ingestion/
+    ingest.ts           # Message ingestion from pi session to SQLite
+  recovery/
+    reconcile.ts        # session_start reconciliation logic
+    integrity.ts        # Post-reconciliation integrity checks
   tools/
     expand.ts           # lcm_expand tool
     grep.ts             # lcm_grep tool
     describe.ts         # lcm_describe tool
-  large-files/
-    interceptor.ts      # tool_result handler for large file detection
-    explorer.ts         # Structural summary generation
-    cache.ts            # Filesystem content cache
-  recovery/
-    reconcile.ts        # session_start reconciliation logic
-  ui/
-    status.ts           # Status bar management
+    truncate.ts         # Token truncation utility
+  test-fixtures/
+    sessions.ts         # Pi session JSONL test fixtures
 tests/
-  fixtures/             # Pi session JSONL test fixtures
-  store.test.ts
-  context-builder.test.ts
-  compaction.test.ts
-  escalation.test.ts
-  large-files.test.ts
-  recovery.test.ts
+  (test files colocated with source as *.test.ts)
 ```
 
 ---
@@ -441,11 +442,12 @@ SQLite is the right choice for the summary DAG because:
 - Zero infrastructure: single file, works in any environment
 - Both reference implementations (Volt, lossless-claw) confirmed this choice
 
-### `better-sqlite3` over `bun:sqlite`
-Pi extensions run in Node.js. `better-sqlite3` is the standard synchronous SQLite binding. Synchronous is appropriate here because:
+### `node:sqlite` over native bindings
+Pi runs on Node.js 22.5+, which includes `node:sqlite` with `DatabaseSync` — a built-in synchronous SQLite binding. This eliminates the need for native dependencies like `better-sqlite3`. Synchronous is appropriate here because:
 - `context` event is performance-critical; async overhead adds up
 - SQLite operations are fast (microseconds for cached reads)
 - Avoids event loop complexity in the tight per-turn loop
+- Zero native compilation — no `node-gyp`, works everywhere Node 22.5+ runs
 
 ### Session JSONL as ground truth
 Pi's session JSONL is append-only and never modified by extensions. `pi-lcm` treats it as the immutable store. SQLite is a derived index over the session, not a replacement. If SQLite is deleted, it can be rebuilt (expensively). If the session is lost, everything is lost — but that's pi's domain, not ours.
@@ -463,10 +465,4 @@ Exact tokenization requires running the model's tokenizer (expensive). `pi-lcm` 
 
 ## Open Questions
 
-| # | Question | Impact | Disposition |
-|---|----------|--------|-------------|
-| 1 | Does pi's extension API support spawning subagents? | Phase 4 subagent expansion | Investigate in Phase 4 |
-| 2 | Can `context` event access the current model's max context window? | Budget math accuracy | `ctx.getContextUsage().contextWindow` — appears available, verify |
-| 3 | Does `agent_end` fire after every model turn, or only after user-facing responses? | Leaf compaction timing | Test with tool call chains |
-| 4 | Branch navigation: does `session_start` fire on branch switch? | Cache invalidation | Test with pi session tree navigation |
-| 5 | What is the maximum `appendEntry` payload size? | Metadata persistence | Check pi docs/source |
+> All questions from the original design have been resolved during implementation. See ROADMAP.md "Open Questions" section for resolution details.
