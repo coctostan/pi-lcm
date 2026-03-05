@@ -73,6 +73,26 @@ Example — tighten the threshold and reduce expand budget:
 
 ---
 
+## Condensation Timing
+
+With default settings, compaction activates gradually as your session grows:
+
+**Leaf summaries** begin once messages exist beyond the `freshTailCount` boundary. With the default `freshTailCount=32`, leaf summaries start being created around turn ~33. Each leaf summary covers up to `leafChunkTokens` (default 20,000) tokens of raw messages.
+
+**Condensation** (merging leaf summaries into higher-depth nodes) requires at least `condensedMinFanout` (default 4) leaf summaries to accumulate outside the fresh tail. This typically means **many turns** before condensation is visible — the exact number depends on the token density of your messages (tool results with large file reads accumulate faster than short conversational turns).
+
+**Why this matters:** In sessions under ~50 turns, you'll see leaf summaries but no condensation. This is expected behavior, not a bug. The system is conservative by design — condensation only triggers when there's enough summarized material to meaningfully compress.
+
+### Tuning for earlier activation
+
+| Change | Effect |
+|--------|--------|
+| Lower `freshTailCount` (e.g., 16) | Leaf summaries start sooner; more messages eligible for summarization |
+| Lower `condensedMinFanout` (e.g., 2) | Condensation triggers with fewer leaf summaries |
+| Lower `leafChunkTokens` (e.g., 10000) | More leaf summaries created per span of messages, reaching condensation threshold faster |
+
+**Caution:** Lowering `freshTailCount` below ~16 may strip context the model still needs for the current task. Test with your typical session patterns before committing to aggressive settings.
+
 ## Debug Harness (isolated target sessions)
 
 When pi-lcm is disabled in your normal settings (controller session), you can still run reproducible test sessions that load only pi-lcm:

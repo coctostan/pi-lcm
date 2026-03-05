@@ -12,7 +12,6 @@ export interface LCMConfig {
   largeFileTokenThreshold: number;
   summaryModel: string;
   incrementalMaxDepth: number;
-  leafMinFanout: number;
   condensedMinFanout: number;
   megapowersAware: boolean;
   crossSession: boolean;
@@ -28,7 +27,6 @@ export const DEFAULT_CONFIG: LCMConfig = {
   largeFileTokenThreshold: 25000,
   summaryModel: "anthropic/claude-haiku-4-5",
   incrementalMaxDepth: -1,
-  leafMinFanout: 8,
   condensedMinFanout: 4,
   megapowersAware: false,
   crossSession: false,
@@ -61,7 +59,7 @@ function isBoolean(v: unknown): v is boolean {
 const POSITIVE_INT_FIELDS: (keyof LCMConfig)[] = [
   'freshTailCount', 'maxExpandTokens', 'leafChunkTokens',
   'leafTargetTokens', 'condensedTargetTokens', 'largeFileTokenThreshold',
-  'leafMinFanout', 'condensedMinFanout',
+  'condensedMinFanout',
 ];
 
 const BOOLEAN_FIELDS: (keyof LCMConfig)[] = ['megapowersAware', 'crossSession'];
@@ -75,7 +73,6 @@ const FIELD_VALIDATORS: Record<keyof LCMConfig, FieldValidator> = {
   leafTargetTokens: isPositiveInteger,
   condensedTargetTokens: isPositiveInteger,
   largeFileTokenThreshold: isPositiveInteger,
-  leafMinFanout: isPositiveInteger,
   condensedMinFanout: isPositiveInteger,
   contextThreshold: isValidThreshold,
   summaryModel: isNonEmptyString,

@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import extensionSetup from './index.ts';
 import { MemoryStore } from './store/memory-store.ts';
@@ -172,5 +172,64 @@ describe('session_start handler', () => {
     assert.deepStrictEqual(items[2], { kind: 'message', messageId: 'e2' });
 
     ms.close();
+  });
+
+  it('emits console.warn on startup with freshTailCount, condensedMinFanout, and estimated leaf turn', async () => {
+    const ref: { startHandler: any } = { startHandler: null };
+    const store = new MemoryStore();
+    const branch: SessionEntry[] = [
+      makeMessageEntry('e0', 'user', 'hello'),
+    ];
+
+    const mockPi = {
+      on(event: string, h: any) {
+        if (event === 'session_start') ref.startHandler = h;
+      },
+      registerTool(_tool: any) {},
+    } as any;
+
+    const config = {
+      freshTailCount: 20,
+      maxExpandTokens: 4000,
+      contextThreshold: 0.75,
+      leafChunkTokens: 20000,
+      leafTargetTokens: 1200,
+      condensedTargetTokens: 2000,
+      largeFileTokenThreshold: 25000,
+      summaryModel: 'anthropic/claude-haiku-4-5',
+      incrementalMaxDepth: -1,
+      condensedMinFanout: 3,
+      megapowersAware: false,
+      crossSession: false,
+    };
+
+    extensionSetup(mockPi, config, { dagStore: store });
+
+    const warnMock = mock.method(console, 'warn', () => {});
+
+    const mockCtx = {
+      sessionManager: {
+        getBranch: () => branch,
+        getSessionId: () => 'test-sess',
+      },
+      cwd: '/tmp/test',
+      ui: { setStatus: () => {} },
+      getContextUsage: () => undefined,
+    } as any;
+
+    await ref.startHandler!({ type: 'session_start' }, mockCtx);
+
+    // Find the startup config warn call (not debug or error calls)
+    const warnCalls = warnMock.mock.calls.map((c: any) => c.arguments.join(' '));
+    const configLine = warnCalls.find((line: string) => line.includes('freshTailCount'));
+
+    assert.ok(configLine, `Expected a console.warn containing freshTailCount, got: ${JSON.stringify(warnCalls)}`);
+    assert.ok(configLine.includes('20'), `Expected freshTailCount value 20 in: ${configLine}`);
+    assert.ok(configLine.includes('condensedMinFanout'), `Expected condensedMinFanout key in: ${configLine}`);
+    assert.ok(configLine.includes('3'), `Expected condensedMinFanout value 3 in: ${configLine}`);
+    assert.ok(configLine.includes('21'), `Expected estimated leaf turn 21 (freshTailCount+1) in: ${configLine}`);
+
+    warnMock.mock.restore();
+    store.close();
   });
 });
