@@ -1,20 +1,27 @@
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+import { complete } from '@mariozechner/pi-ai';
+import { Type } from '@sinclair/typebox';
+import { mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { loadConfig } from './config.ts';
 import type { LCMConfig } from './config.ts';
+import { runCompaction } from './compaction/engine.ts';
 import { MemoryContentStore } from './context/content-store.ts';
 import { ContextBuilder } from './context/context-builder.ts';
 import { ContextHandler } from './context/context-handler.ts';
 import { StripStrategy } from './context/strip-strategy.ts';
-import { registerDescribeTool } from './tools/describe.ts';
-import { registerExpandTool } from './tools/expand.ts';
-import { registerGrepTool } from './tools/grep.ts';
-import { formatStatusBar } from './status.ts';
 import { ingestNewMessages } from './ingestion/ingest.ts';
-import type { Store } from './store/types.ts';
-import { runCompaction } from './compaction/engine.ts';
-import type { Summarizer } from './summarizer/summarizer.ts';
-import { reconcile } from './recovery/reconcile.ts';
 import { checkIntegrity } from './recovery/integrity.ts';
+import { reconcile } from './recovery/reconcile.ts';
+import { SqliteStore } from './store/sqlite-store.ts';
+import type { Store } from './store/types.ts';
+import { formatStatusBar } from './status.ts';
+import { PiSummarizer } from './summarizer/summarizer.ts';
+import type { CompleteFn, Summarizer } from './summarizer/summarizer.ts';
+import { registerDescribeTool, createDescribeExecute } from './tools/describe.ts';
+import { registerExpandTool, createExpandExecute } from './tools/expand.ts';
+import { registerGrepTool, createGrepExecute } from './tools/grep.ts';
 
 /**
  * pi-lcm extension entry point.
@@ -27,6 +34,10 @@ export interface InternalOptions {
   createDagStore?: () => Store;
   summarizer?: Summarizer;
   runCompactionFn?: typeof runCompaction;
+  /** Override DB directory for testing the production SqliteStore path. */
+  dbDir?: string;
+  /** Override complete function for testing the production PiSummarizer path. */
+  completeFn?: CompleteFn;
 }
 
 export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: InternalOptions): void {
@@ -35,9 +46,10 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
 
   // DAG store for Phase 2 message ingestion (set in session_start or injected for tests)
   let dagStore: Store | null = _internal?.dagStore ?? null;
-  const summarizer = _internal?.summarizer ?? null;
+  let summarizer: Summarizer | null = _internal?.summarizer ?? null;
   const runCompactionFn = _internal?.runCompactionFn ?? runCompaction;
   const createDagStore = _internal?.createDagStore;
+  let dagReady = false;
 
   // Wire ContextHandler with the shared store (AC 15)
   const strategy = new StripStrategy();
@@ -48,14 +60,66 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
   // AC 24: Wire ContextBuilder with the handler and optional DAG Store
   let builder = new ContextBuilder(handler, dagStore);
 
-  // AC 25 + AC 26: Register tools conditionally based on DAG store availability.
+  // AC 7: Register all three DAG tools eagerly, gated by dagReady for grep/describe.
+  // When _internal.dagStore is available at init, use direct wiring (dagReady set later in session_start).
   if (dagStore) {
+    // _internal path: dagStore is already available, register with direct references
     registerExpandTool(pi, store, { maxExpandTokens: resolvedConfig.maxExpandTokens }, dagStore);
     registerGrepTool(pi, dagStore);
     registerDescribeTool(pi, dagStore);
   } else {
-    // Keep legacy Phase 1 plain-text expand behavior when DAG store is absent.
-    registerExpandTool(pi, store, { maxExpandTokens: resolvedConfig.maxExpandTokens });
+    // Production path: register all tools eagerly with dagReady gate.
+    // lcm_expand: Phase 1 mode when !dagReady, Phase 2 mode when dagReady
+    pi.registerTool({
+      name: 'lcm_expand',
+      label: 'LCM Expand',
+      description:
+        'Retrieve original content that was stripped from old messages by LCM context management. Use the ID from the LCM placeholder text to recover the full content.',
+      parameters: Type.Object({
+        id: Type.String({ description: 'The ID from the LCM placeholder (e.g., the tool call ID).' }),
+      }),
+      async execute(toolCallId, params, _signal, _onUpdate, _ctx) {
+        const currentDagStore = dagReady ? dagStore : undefined;
+        const exec = createExpandExecute(store, { maxExpandTokens: resolvedConfig.maxExpandTokens }, currentDagStore);
+        return exec(toolCallId, params);
+      },
+    });
+
+    // lcm_grep: gated on dagReady
+    pi.registerTool({
+      name: 'lcm_grep',
+      label: 'LCM Grep',
+      description:
+        'Search across archived messages and summaries using full-text search. Returns matching snippets with IDs for further inspection via lcm_describe or lcm_expand.',
+      parameters: Type.Object({
+        query: Type.String({ description: 'Search query string.' }),
+      }),
+      async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+        if (!dagReady || !dagStore) {
+          return { content: [{ type: 'text' as const, text: 'LCM initializing — the DAG store is not yet available.' }], details: undefined };
+        }
+        const exec = createGrepExecute(dagStore);
+        return exec(_toolCallId, _params);
+      },
+    });
+
+    // lcm_describe: gated on dagReady
+    pi.registerTool({
+      name: 'lcm_describe',
+      label: 'LCM Describe',
+      description:
+        'Inspect summary metadata (depth, kind, token count, time range, descendant count) without expanding the full content. Use with summary IDs from lcm_grep results.',
+      parameters: Type.Object({
+        id: Type.String({ description: 'Summary ID to describe.' }),
+      }),
+      async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
+        if (!dagReady || !dagStore) {
+          return { content: [{ type: 'text' as const, text: 'LCM initializing — the DAG store is not yet available.' }], details: undefined };
+        }
+        const exec = createDescribeExecute(dagStore);
+        return exec(_toolCallId, _params);
+      },
+    });
   }
 
   pi.on('context', async (event, ctx) => {
@@ -67,17 +131,53 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
   });
 
   pi.on('session_start', async (_event, ctx) => {
-    if (!dagStore) return;
     const sessionId = ctx.sessionManager.getSessionId();
     const branch = ctx.sessionManager.getBranch();
-
     const runIntegrity = (activeStore: Store) => {
       const warnings = checkIntegrity(activeStore);
       for (const w of warnings) {
         console.warn('pi-lcm: integrity:', w);
       }
     };
-
+    // Production path: create SqliteStore + PiSummarizer when no _internal.dagStore
+    if (!dagStore) {
+      try {
+        // AC 2: Auto-create directory
+        const dbDir = _internal?.dbDir ?? join(homedir(), '.pi', 'agent', 'lcm');
+        mkdirSync(dbDir, { recursive: true });
+        dagStore = new SqliteStore(join(dbDir, `${sessionId}.db`));
+        if (!summarizer) {
+          const completeFn: CompleteFn = _internal?.completeFn ?? (complete as unknown as CompleteFn);
+          summarizer = new PiSummarizer({
+            modelRegistry: ctx.modelRegistry,
+            summaryModel: resolvedConfig.summaryModel,
+            completeFn,
+          });
+        }
+        // AC 5: Open conversation
+        dagStore.openConversation(sessionId, ctx.cwd);
+        reconcile(dagStore, branch);
+        runIntegrity(dagStore);
+        // AC 6: dagReady = true only after all succeed
+        dagReady = true;
+        builder = new ContextBuilder(handler, dagStore);
+      } catch (err) {
+        // AC 10, 11, 12: Graceful degradation
+        console.error('pi-lcm: DAG initialization failed, falling back to Phase 1', err);
+        if (dagStore) {
+          try {
+            dagStore.close();
+          } catch {}
+        }
+        dagStore = null;
+        summarizer = null;
+        dagReady = false;
+        builder = new ContextBuilder(handler, null);
+      }
+      return;
+    }
+    // _internal path: dagStore already exists
+    dagReady = true; // Tools can now operate against the _internal store
     try {
       dagStore.openConversation(sessionId, ctx.cwd);
       reconcile(dagStore, branch);
@@ -90,17 +190,16 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
 
     try {
       if (!createDagStore) throw new Error('no createDagStore factory configured');
-
       const recoveredStore = createDagStore();
       recoveredStore.openConversation(sessionId, ctx.cwd);
       reconcile(recoveredStore, branch);
       runIntegrity(recoveredStore);
-
       dagStore = recoveredStore;
       builder = new ContextBuilder(handler, dagStore);
     } catch (recoveryErr) {
       console.error('pi-lcm: session_start recovery failed', recoveryErr);
       dagStore = null;
+      dagReady = false;
       builder = new ContextBuilder(handler, null);
     }
   });

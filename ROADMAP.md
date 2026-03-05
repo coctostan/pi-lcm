@@ -46,7 +46,7 @@ The zero-cost continuity invariant must hold at every milestone: a user who inst
 | 1.3 | ~~`context` event handler: fresh tail protection, threshold check, strip logic~~ ✅ |
 | 1.4 | ~~`lcm_expand` tool: session entry lookup, token cap, tool registration~~ ✅ |
 | 1.5 | ~~Status bar integration: `ctx.ui.setStatus()` per-turn~~ ✅ |
-| 1.6 | ~~Tests: session fixtures, context builder unit tests, expand tool tests~~ ✅ (52 passing) |
+| 1.6 | ~~Tests: session fixtures, context builder unit tests, expand tool tests~~ ✅ |
 | 1.7 | ~~README: install instructions, config reference, usage examples~~ ✅ |
 
 ### Exit Criteria
@@ -58,7 +58,7 @@ The zero-cost continuity invariant must hold at every milestone: a user who inst
 
 ---
 
-## Phase 2: LLM Summarization + SQLite DAG
+## Phase 2: LLM Summarization + SQLite DAG ✅
 
 **Goal:** True lossless context management. The model sees summaries of old turns, not stripped placeholders.
 
@@ -90,23 +90,23 @@ The zero-cost continuity invariant must hold at every milestone: a user who inst
 
 | # | Task | Issue |
 |---|------|-------|
-| 2.1 | SQLite schema + `better-sqlite3` integration | #002 |
-| 2.2 | `Store` interface + SQLite and in-memory implementations | #002 |
-| 2.3 | Message ingestion pipeline (`agent_end` → SQLite) | #003 |
-| 2.4 | Summarizer interface + pi-ai implementation (`complete()`) | #003 |
-| 2.5 | Token estimator (char-based with safety margin) | #003 |
-| 2.6 | Leaf compaction pass (detect threshold, chunk, summarize, store) | #004 |
-| 2.7 | Condensation pass (fanout detection, depth-aware prompts, cascade) | #004 |
-| 2.8 | Three-level escalation (Level 1 → 2 → 3 with convergence guarantee) | #004 |
-| 2.9 | `ContextBuilder` upgrade: read context_items, inject XML summary nodes | #005 |
-| 2.10 | `session_before_compact` override for reactive compaction | #006 |
-| 2.11 | `lcm_grep` tool (FTS5 queries) | #005 |
-| 2.12 | `lcm_describe` tool | #005 |
-| 2.13 | `lcm_expand` upgrade: DAG node retrieval, DAG walk for full reconstruction | #005 |
-| 2.14 | `session_start` reconciliation: JSONL ↔ SQLite sync | #006 |
-| 2.15 | Status bar upgrade: `🟢/🟡/🔴 {pct}% \| {N} summaries (d{D}) \| tail: {freshTailCount}` | #007 |
-| 2.16 | Integration tests with real session fixtures | #007 |
-| 2.17 | Performance tests: context event overhead, compaction latency | #007 |
+| 2.1 | ~~SQLite schema + `node:sqlite` integration~~ ✅ | #008 |
+| 2.2 | ~~`Store` interface + SQLite and in-memory implementations~~ ✅ | #008 |
+| 2.3 | ~~Message ingestion pipeline (`agent_end` → SQLite)~~ ✅ | #003 |
+| 2.4 | ~~Summarizer interface + pi-ai implementation (`complete()`)~~ ✅ | #003 |
+| 2.5 | ~~Token estimator (char-based with safety margin)~~ ✅ | #003 |
+| 2.6 | ~~Leaf compaction pass (detect threshold, chunk, summarize, store)~~ ✅ | #004 |
+| 2.7 | ~~Condensation pass (fanout detection, depth-aware prompts, cascade)~~ ✅ | #004 |
+| 2.8 | ~~Three-level escalation (Level 1 → 2 → 3 with convergence guarantee)~~ ✅ | #004 |
+| 2.9 | ~~`ContextBuilder` upgrade: read context_items, inject XML summary nodes~~ ✅ | #005 |
+| 2.10 | ~~`session_before_compact` override for reactive compaction~~ ✅ | #006 |
+| 2.11 | ~~`lcm_grep` tool (FTS5 queries)~~ ✅ | #005 |
+| 2.12 | ~~`lcm_describe` tool~~ ✅ | #005 |
+| 2.13 | ~~`lcm_expand` upgrade: DAG node retrieval, DAG walk for full reconstruction~~ ✅ | #005 |
+| 2.14 | ~~`session_start` reconciliation: JSONL ↔ SQLite sync~~ ✅ | #006 |
+| 2.15 | ~~Status bar upgrade: `🟢/🟡/🔴 {pct}% \| {N} summaries (d{D}) \| tail: {freshTailCount}`~~ ✅ | #007 |
+| 2.16 | ~~Integration tests with real session fixtures~~ ✅ | #007 |
+| 2.17 | ~~Performance tests: context event overhead, compaction latency~~ ✅ | #007 |
 
 ### Exit Criteria
 
@@ -231,15 +231,15 @@ Users installing `pi-lcm` on an existing long session need a backfill path:
 
 ## Version Summary
 
-| Version | Phase | Key Feature | Estimated Ship |
-|---------|-------|-------------|----------------|
-| **v0.1** | Phase 1 | Zero-cost context filtering + `lcm_expand` | Week 1 |
-| **v0.2** | Phase 2 | LLM summarization + SQLite DAG + `lcm_grep` | Week 2–3 |
-| **v0.3** | Phase 3 | Large file interception | Week 3–4 |
-| **v1.0** | Phase 3 complete | Full LCM feature parity with Volt/lossless-claw | Week 4 |
-| **v1.1** | Phase 4.1 | Megapowers phase-aware strategies | Week 5 |
-| **v1.2** | Phase 4.2–4.4 | Widget, cross-session, `/lcm` command | Week 6 |
-| **v2.0** | Phase 4.5–4.6 | Subagent expansion + backfill | TBD |
+| Version | Phase | Key Feature | Status |
+|---------|-------|-------------|--------|
+| **v0.1** | Phase 1 | Zero-cost context filtering + `lcm_expand` | ✅ Done |
+| **v0.2** | Phase 2 | LLM summarization + SQLite DAG + `lcm_grep` | ✅ Done (not yet wired for production — see #011) |
+| **v0.3** | Phase 3 | Large file interception | Planned |
+| **v1.0** | Phase 3 complete | Full LCM feature parity with Volt/lossless-claw | Planned |
+| **v1.1** | Phase 4.1 | Megapowers phase-aware strategies | Planned |
+| **v1.2** | Phase 4.2–4.4 | Widget, cross-session, `/lcm` command | Planned |
+| **v2.0** | Phase 4.5–4.6 | Subagent expansion + backfill | Planned |
 
 ---
 

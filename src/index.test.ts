@@ -13,7 +13,7 @@ describe('src/index.ts wiring (AC 15)', () => {
         if (event === 'context') capturedContextHandler = handler;
       },
       registerTool(tool: any) {
-        capturedTool = tool;
+        if (tool.name === 'lcm_expand') capturedTool = tool;
       },
     } as any;
 
