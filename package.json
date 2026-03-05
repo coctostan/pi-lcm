@@ -8,7 +8,13 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test 'src/**/*.test.ts'"
+    "test": "node --experimental-strip-types --test 'src/**/*.test.ts'",
+    "harness:lcm": "bash scripts/lcm-harness.sh",
+    "harness:lcm:real-use": "bash scripts/lcm-harness.sh --prompts-file scripts/prompts/lcm-real-use.txt",
+    "harness:lcm:real-use:with-cmux": "bash scripts/lcm-harness.sh --with-cmux --prompts-file scripts/prompts/lcm-real-use.txt",
+    "harness:lcm:cmux": "bash scripts/lcm-cmux-real-use.sh",
+    "harness:lcm:with-cmux": "bash scripts/lcm-harness.sh --with-cmux",
+    "harness:lcm:cmux-tool-check": "bash scripts/lcm-harness.sh --with-cmux --prompts-file scripts/prompts/cmux-tool-check.txt --pi-arg --mode --pi-arg json"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*"

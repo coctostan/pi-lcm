@@ -63,10 +63,10 @@ describe('production wiring: session_start creates SqliteStore + PiSummarizer (A
       content: [{ type: 'text' as const, text: 'mock summary' }],
     });
 
-    const mockModel = { id: 'gemini-2.5-flash', provider: 'google', api: 'google' } as any;
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic', api: 'anthropic-messages' } as any;
     const mockModelRegistry = {
       find(provider: string, modelId: string) {
-        if (provider === 'google' && modelId === 'gemini-2.5-flash') return mockModel;
+        if (provider === 'anthropic' && modelId === 'claude-haiku-4-5') return mockModel;
         return undefined;
       },
     } as any;
@@ -269,10 +269,10 @@ describe('production wiring: session_shutdown closes production store (AC 18)', 
       content: [{ type: 'text' as const, text: 'mock summary' }],
     });
 
-    const mockModel = { id: 'gemini-2.5-flash', provider: 'google', api: 'google' } as any;
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic', api: 'anthropic-messages' } as any;
     const mockModelRegistry = {
       find(provider: string, modelId: string) {
-        if (provider === 'google' && modelId === 'gemini-2.5-flash') return mockModel;
+        if (provider === 'anthropic' && modelId === 'claude-haiku-4-5') return mockModel;
         return undefined;
       },
     } as any;

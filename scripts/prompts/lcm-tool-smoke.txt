@@ -1,0 +1,6 @@
+We are setting up a tool smoke test. Remember marker TOOL-SMOKE-ALPHA.
+Please acknowledge marker TOOL-SMOKE-ALPHA in one sentence.
+Use the lcm_grep tool with query: TOOL-SMOKE-ALPHA. You must call the tool and show the returned IDs.
+Use lcm_grep with query: compaction and show the top results.
+If any summary ID appears, call lcm_describe on one summary ID and report tokenCount.
+If any summary ID appears, call lcm_expand on one summary ID and show first 4 lines.

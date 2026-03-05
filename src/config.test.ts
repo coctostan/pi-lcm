@@ -24,7 +24,6 @@ type ExpectedKeys =
   | 'largeFileTokenThreshold'
   | 'summaryModel'
   | 'incrementalMaxDepth'
-  | 'leafMinFanout'
   | 'condensedMinFanout'
   | 'megapowersAware'
   | 'crossSession';
@@ -34,7 +33,7 @@ const _assertKeys: Assert<Equal<keyof LCMConfig, ExpectedKeys>> = true;
 void _assertKeys;
 
 describe('LCMConfig type and DEFAULT_CONFIG', () => {
-  it('DEFAULT_CONFIG has exactly the 13 expected fields', () => {
+  it('DEFAULT_CONFIG has exactly the 12 expected fields', () => {
     const config: LCMConfig = DEFAULT_CONFIG;
     const keys = Object.keys(config).sort();
     assert.deepStrictEqual(keys, [
@@ -46,7 +45,6 @@ describe('LCMConfig type and DEFAULT_CONFIG', () => {
       'incrementalMaxDepth',
       'largeFileTokenThreshold',
       'leafChunkTokens',
-      'leafMinFanout',
       'leafTargetTokens',
       'maxExpandTokens',
       'megapowersAware',
@@ -63,9 +61,8 @@ describe('LCMConfig type and DEFAULT_CONFIG', () => {
       leafTargetTokens: 1200,
       condensedTargetTokens: 2000,
       largeFileTokenThreshold: 25000,
-      summaryModel: "google/gemini-2.5-flash",
+      summaryModel: "anthropic/claude-haiku-4-5",
       incrementalMaxDepth: -1,
-      leafMinFanout: 8,
       condensedMinFanout: 4,
       megapowersAware: false,
       crossSession: false,
@@ -86,7 +83,6 @@ describe('validateConfig — happy path', () => {
       largeFileTokenThreshold: 50000,
       summaryModel: "anthropic/claude-sonnet",
       incrementalMaxDepth: 3,
-      leafMinFanout: 4,
       condensedMinFanout: 2,
       megapowersAware: true,
       crossSession: true,
@@ -114,7 +110,7 @@ describe('validateConfig — field validation', () => {
   const positiveIntFields = [
     'freshTailCount', 'maxExpandTokens', 'leafChunkTokens',
     'leafTargetTokens', 'condensedTargetTokens', 'largeFileTokenThreshold',
-    'leafMinFanout', 'condensedMinFanout',
+    'condensedMinFanout',
   ];
 
   for (const field of positiveIntFields) {
@@ -215,6 +211,17 @@ describe('loadConfig', () => {
     writeFileSync(configPath, JSON.stringify({ freshTailCount: 64 }));
     const result = loadConfig(configPath);
     assert.strictEqual(result.freshTailCount, 64);
+  });
+
+  it('silently ignores unknown fields like leafMinFanout', () => {
+    const configPath = join(testDir, 'unknown-field.json');
+    writeFileSync(configPath, JSON.stringify({ leafMinFanout: 8, freshTailCount: 16 }));
+    const warnMock = mock.method(console, 'warn', () => {});
+    const result = loadConfig(configPath);
+    assert.strictEqual(result.freshTailCount, 16);
+    assert.ok(!('leafMinFanout' in result), 'leafMinFanout should not appear in result');
+    assert.strictEqual(warnMock.mock.callCount(), 0, 'No warnings for unknown fields');
+    warnMock.mock.restore();
   });
 
   // AC 18: valid JSON merge

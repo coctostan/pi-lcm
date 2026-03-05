@@ -38,7 +38,9 @@ export type CompleteFn = (
 ) => Promise<AssistantMessage>;
 
 export interface PiSummarizerOptions {
-  modelRegistry: Pick<ModelRegistry, 'find'>;
+  modelRegistry: Pick<ModelRegistry, 'find'> & {
+    getApiKey?: (model: Model<Api>) => Promise<string | undefined>;
+  };
   summaryModel: string; // "provider/modelId"
   completeFn?: CompleteFn;
 }
@@ -50,7 +52,7 @@ export interface PiSummarizerOptions {
 export class PiSummarizer implements Summarizer {
   private model: Model<Api>;
   private completeFn: CompleteFn;
-
+  private modelRegistry: PiSummarizerOptions['modelRegistry'];
   constructor(opts: PiSummarizerOptions) {
     const slashIdx = opts.summaryModel.indexOf('/');
     if (slashIdx === -1) {
@@ -65,16 +67,21 @@ export class PiSummarizer implements Summarizer {
       throw new Error(`Model not found: ${opts.summaryModel}`);
     }
     this.model = model;
+    this.modelRegistry = opts.modelRegistry;
     this.completeFn =
       opts.completeFn ??
       (() => {
         throw new Error('completeFn not provided');
       });
   }
-
   async summarize(content: string, opts: SummarizeOptions): Promise<string> {
     const systemPrompt = opts.kind === 'leaf' ? getLeafPrompt() : getCondensePrompt(opts.depth);
-
+    // Resolve API key via modelRegistry so the correct authenticated instance
+    // is used, regardless of which @mariozechner/pi-ai module copy is loaded.
+    const apiKey =
+      typeof this.modelRegistry.getApiKey === 'function'
+        ? await this.modelRegistry.getApiKey(this.model)
+        : undefined;
     const response = await this.completeFn(
       this.model,
       {
@@ -84,12 +91,16 @@ export class PiSummarizer implements Summarizer {
       {
         maxTokens: opts.maxOutputTokens,
         signal: opts.signal,
+        ...(apiKey !== undefined ? { apiKey } : {}),
       },
     );
 
+    if (response.errorMessage) {
+      throw new Error(`Summarizer API error: ${response.errorMessage}`);
+    }
     const textPart = response.content.find((c: any) => c.type === 'text');
     return textPart && 'text' in textPart ? textPart.text : '';
-}
+  }
 }
 
 /**

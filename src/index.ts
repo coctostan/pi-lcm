@@ -44,6 +44,14 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
   const resolvedConfig = config ?? loadConfig();
   const store = new MemoryContentStore();
 
+  const debugEnabled = process.env.PI_LCM_DEBUG === '1';
+  const debug = (...args: unknown[]) => {
+    if (!debugEnabled) return;
+    console.warn('pi-lcm: debug:', ...args);
+  };
+
+  debug('resolvedConfig', resolvedConfig);
+
   // DAG store for Phase 2 message ingestion (set in session_start or injected for tests)
   let dagStore: Store | null = _internal?.dagStore ?? null;
   let summarizer: Summarizer | null = _internal?.summarizer ?? null;
@@ -133,6 +141,13 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
   pi.on('session_start', async (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const branch = ctx.sessionManager.getBranch();
+    debug('session_start begin', {
+      sessionId,
+      branchEntries: branch.length,
+      hasDagStore: Boolean(dagStore),
+      hasSummarizer: Boolean(summarizer),
+    });
+    console.warn(`pi-lcm: config — freshTailCount=${resolvedConfig.freshTailCount}, condensedMinFanout=${resolvedConfig.condensedMinFanout}. Leaf summaries start after turn ~${resolvedConfig.freshTailCount + 1}. Condensation activates after ~${resolvedConfig.condensedMinFanout} leaf summaries accumulate.`);
     const runIntegrity = (activeStore: Store) => {
       const warnings = checkIntegrity(activeStore);
       for (const w of warnings) {
@@ -154,6 +169,11 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
             completeFn,
           });
         }
+        debug('session_start production init', {
+          dbPath: join(dbDir, `${sessionId}.db`),
+          summaryModel: resolvedConfig.summaryModel,
+          hasSummarizer: Boolean(summarizer),
+        });
         // AC 5: Open conversation
         dagStore.openConversation(sessionId, ctx.cwd);
         reconcile(dagStore, branch);
@@ -161,9 +181,15 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
         // AC 6: dagReady = true only after all succeed
         dagReady = true;
         builder = new ContextBuilder(handler, dagStore);
+        debug('session_start ready', {
+          dagReady,
+          contextItems: dagStore.getContextItems().length,
+          messages: dagStore.getMessagesAfter(-1).length,
+        });
       } catch (err) {
         // AC 10, 11, 12: Graceful degradation
         console.error('pi-lcm: DAG initialization failed, falling back to Phase 1', err);
+        debug('session_start failed', err);
         if (dagStore) {
           try {
             dagStore.close();
@@ -178,14 +204,21 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
     }
     // _internal path: dagStore already exists
     dagReady = true; // Tools can now operate against the _internal store
+    debug('session_start internal path', { sessionId, branchEntries: branch.length });
     try {
       dagStore.openConversation(sessionId, ctx.cwd);
       reconcile(dagStore, branch);
       runIntegrity(dagStore);
       builder = new ContextBuilder(handler, dagStore);
+      debug('session_start internal ready', {
+        dagReady,
+        contextItems: dagStore.getContextItems().length,
+        messages: dagStore.getMessagesAfter(-1).length,
+      });
       return;
     } catch (err) {
       console.error('pi-lcm: session_start reconciliation error', err);
+      debug('session_start internal reconciliation error', err);
     }
 
     try {
@@ -196,8 +229,14 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
       runIntegrity(recoveredStore);
       dagStore = recoveredStore;
       builder = new ContextBuilder(handler, dagStore);
+      debug('session_start recovery ready', {
+        dagReady,
+        contextItems: dagStore.getContextItems().length,
+        messages: dagStore.getMessagesAfter(-1).length,
+      });
     } catch (recoveryErr) {
       console.error('pi-lcm: session_start recovery failed', recoveryErr);
+      debug('session_start recovery failed', recoveryErr);
       dagStore = null;
       dagReady = false;
       builder = new ContextBuilder(handler, null);
@@ -205,14 +244,21 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
   });
 
   pi.on('agent_end', async (_event, ctx) => {
-    if (!dagStore) return;
+    if (!dagStore) {
+      debug('agent_end skipped: no dagStore');
+      return;
+    }
 
-    ingestNewMessages(dagStore, ctx);
+    const ingested = ingestNewMessages(dagStore, ctx);
+    debug('agent_end ingested', { ingested, totalMessages: dagStore.getMessagesAfter(-1).length });
 
-    if (!summarizer) return;
+    if (!summarizer) {
+      debug('agent_end skipped: no summarizer');
+      return;
+    }
 
     try {
-      await runCompactionFn(
+      const compactionResult = await runCompactionFn(
         dagStore,
         summarizer,
         {
@@ -227,6 +273,7 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
         },
         new AbortController().signal,
       );
+      debug('agent_end compaction result', compactionResult);
     } catch (err) {
       console.error('pi-lcm: compaction error', err);
     }
