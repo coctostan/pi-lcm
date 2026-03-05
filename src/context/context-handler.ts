@@ -10,6 +10,8 @@ export interface ContextHandlerConfig {
 export interface ContextHandlerStats {
   strippedCount: number;
   estimatedTokensSaved: number;
+  summaryCount?: number;
+  maxDepth?: number;
 }
 
 export interface ContextHandlerResult {

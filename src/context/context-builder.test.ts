@@ -242,4 +242,147 @@ describe('ContextBuilder — with DAG Store', () => {
     assert.strictEqual(typeof result.stats.strippedCount, 'number');
     assert.strictEqual(typeof result.stats.estimatedTokensSaved, 'number');
   });
+
+  it('populates summaryCount with the count of resolved summaries (AC 3)', () => {
+    const contentStore = new MemoryContentStore();
+    const strategy = new StripStrategy();
+    const handler = new ContextHandler(strategy, contentStore, { freshTailCount: 32 });
+
+    const dagStore = new MemoryStore();
+    dagStore.openConversation('sess_1', '/tmp/project');
+
+    const sid1 = dagStore.insertSummary({
+      depth: 0,
+      kind: 'leaf',
+      content: 'Summary one.',
+      tokenCount: 20,
+      earliestAt: 100,
+      latestAt: 200,
+      descendantCount: 2,
+      createdAt: 300,
+    });
+    const sid2 = dagStore.insertSummary({
+      depth: 0,
+      kind: 'leaf',
+      content: 'Summary two.',
+      tokenCount: 20,
+      earliestAt: 300,
+      latestAt: 400,
+      descendantCount: 3,
+      createdAt: 500,
+    });
+
+    dagStore.replaceContextItems([
+      { kind: 'summary', summaryId: sid1 },
+      { kind: 'summary', summaryId: sid2 },
+      { kind: 'message', messageId: 'msg_1' },
+    ]);
+
+    const builder = new ContextBuilder(handler, dagStore);
+    const result = builder.buildContext([
+      {
+        role: 'toolResult' as const,
+        toolCallId: 'msg_1',
+        toolName: 'read',
+        content: [{ type: 'text' as const, text: 'file content' }],
+        isError: false,
+        timestamp: 500,
+      } as AgentMessage,
+    ]);
+
+    assert.strictEqual(result.stats.summaryCount, 2);
+  });
+
+  it('populates maxDepth with the maximum depth among resolved summaries (AC 4)', () => {
+    const contentStore = new MemoryContentStore();
+    const strategy = new StripStrategy();
+    const handler = new ContextHandler(strategy, contentStore, { freshTailCount: 32 });
+
+    const dagStore = new MemoryStore();
+    dagStore.openConversation('sess_1', '/tmp/project');
+
+    const sid1 = dagStore.insertSummary({
+      depth: 0,
+      kind: 'leaf',
+      content: 'Leaf summary.',
+      tokenCount: 20,
+      earliestAt: 100,
+      latestAt: 200,
+      descendantCount: 2,
+      createdAt: 300,
+    });
+    const sid2 = dagStore.insertSummary({
+      depth: 1,
+      kind: 'condensed',
+      content: 'Condensed summary.',
+      tokenCount: 30,
+      earliestAt: 50,
+      latestAt: 400,
+      descendantCount: 5,
+      createdAt: 500,
+    });
+
+    dagStore.replaceContextItems([
+      { kind: 'summary', summaryId: sid2 },
+      { kind: 'summary', summaryId: sid1 },
+    ]);
+
+    const builder = new ContextBuilder(handler, dagStore);
+    const result = builder.buildContext([]);
+
+    assert.strictEqual(result.stats.maxDepth, 1);
+  });
+
+  it('sets maxDepth to 0 for leaf-only summaries', () => {
+    const contentStore = new MemoryContentStore();
+    const strategy = new StripStrategy();
+    const handler = new ContextHandler(strategy, contentStore, { freshTailCount: 32 });
+
+    const dagStore = new MemoryStore();
+    dagStore.openConversation('sess_1', '/tmp/project');
+
+    const sid1 = dagStore.insertSummary({
+      depth: 0,
+      kind: 'leaf',
+      content: 'Leaf only.',
+      tokenCount: 20,
+      earliestAt: 100,
+      latestAt: 200,
+      descendantCount: 2,
+      createdAt: 300,
+    });
+
+    dagStore.replaceContextItems([{ kind: 'summary', summaryId: sid1 }]);
+
+    const builder = new ContextBuilder(handler, dagStore);
+    const result = builder.buildContext([]);
+
+    assert.strictEqual(result.stats.maxDepth, 0);
+  });
+
+  it('does not set maxDepth when there are no summaries in context_items', () => {
+    const contentStore = new MemoryContentStore();
+    const strategy = new StripStrategy();
+    const handler = new ContextHandler(strategy, contentStore, { freshTailCount: 32 });
+
+    const dagStore = new MemoryStore();
+    dagStore.openConversation('sess_1', '/tmp/project');
+
+    dagStore.replaceContextItems([{ kind: 'message', messageId: 'msg_1' }]);
+
+    const builder = new ContextBuilder(handler, dagStore);
+    const result = builder.buildContext([
+      {
+        role: 'toolResult' as const,
+        toolCallId: 'msg_1',
+        toolName: 'read',
+        content: [{ type: 'text' as const, text: 'content' }],
+        isError: false,
+        timestamp: 100,
+      } as AgentMessage,
+    ]);
+
+    assert.strictEqual(result.stats.summaryCount, 0);
+    assert.strictEqual(result.stats.maxDepth, undefined);
+  });
 });
