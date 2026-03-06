@@ -1,6 +1,6 @@
 # ARCHITECTURE: pi-lcm
 
-**Version:** 0.2
+**Version:** 0.3
 **Related:** [VISION.md](./VISION.md), [PRD.md](./PRD.md), [ROADMAP.md](./ROADMAP.md)
 
 ---
@@ -40,6 +40,13 @@ Both use SQLite for the summary DAG. Pi's extension API is a better host than Op
 │  │ Builds      │  │ Depth-aware      │  │  lcm_describe     │  │
 │  │ active ctx  │  │ prompts          │  │                   │  │
 │  └──────┬──────┘  └────────┬─────────┘  └──────────────────┘  │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  LargeFileInterceptor (tool_result hook)                 │   │
+│  │  Intercepts read results > largeFileTokenThreshold       │   │
+│  │  Cache: ~/.pi/agent/lcm-files/<uuid>.txt                 │   │
+│  │  Dedup: path + mtime; lcm_expand pagination via offset   │   │
+│  └──────────────────────────────────────────────────────────┘   │
 │         │                  │                                    │
 │  ┌──────▼──────────────────▼──────────────────────────────────┐ │
 │  │  Store (SQLite DAG + in-memory cache)                      │ │
