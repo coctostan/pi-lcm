@@ -9,6 +9,8 @@ export type {
   SummaryMeta,
   MessageRole,
   SummaryKind,
+  LargeFileInsert,
+  StoredLargeFile,
 } from './types.ts';
 
 export { StoreClosedError } from './types.ts';

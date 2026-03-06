@@ -5,6 +5,8 @@ import type {
   ContextItem,
   GrepResult,
   IngestableMessage,
+  LargeFileInsert,
+  StoredLargeFile,
   StoredMessage,
   Store,
   StoredSummary,
@@ -451,6 +453,69 @@ export class SqliteStore implements Store {
       descendantCount: row.descendantCount,
       createdAt: row.createdAt,
     };
+  }
+
+  insertLargeFile(file: LargeFileInsert): string {
+    this.assertOpen();
+    const conversationId = this.requireConversationId();
+    const fileId = randomUUID();
+    this.db
+      .prepare(
+        `INSERT INTO large_files(fileId, conversationId, path, explorationSummary, tokenCount, storagePath, capturedAt, fileMtime)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(fileId, conversationId, file.path, file.explorationSummary, file.tokenCount, file.storagePath, file.capturedAt, file.fileMtime);
+    return fileId;
+  }
+
+  getLargeFile(fileId: string): StoredLargeFile | undefined {
+    this.assertOpen();
+    const row = this.db
+      .prepare(
+        `SELECT fileId, conversationId, path, explorationSummary, tokenCount, storagePath, capturedAt, fileMtime
+         FROM large_files
+         WHERE fileId = ?`
+      )
+      .get(fileId) as any;
+    if (!row) return undefined;
+    return {
+      fileId: row.fileId,
+      conversationId: row.conversationId,
+      path: row.path,
+      explorationSummary: row.explorationSummary,
+      tokenCount: row.tokenCount,
+      storagePath: row.storagePath,
+      capturedAt: row.capturedAt,
+      fileMtime: row.fileMtime,
+    };
+  }
+
+  getLargeFileByPath(path: string): StoredLargeFile | undefined {
+    this.assertOpen();
+    const conversationId = this.requireConversationId();
+    const row = this.db
+      .prepare(
+        `SELECT fileId, conversationId, path, explorationSummary, tokenCount, storagePath, capturedAt, fileMtime
+         FROM large_files
+         WHERE path = ? AND conversationId = ?`
+      )
+      .get(path, conversationId) as any;
+    if (!row) return undefined;
+    return {
+      fileId: row.fileId,
+      conversationId: row.conversationId,
+      path: row.path,
+      explorationSummary: row.explorationSummary,
+      tokenCount: row.tokenCount,
+      storagePath: row.storagePath,
+      capturedAt: row.capturedAt,
+      fileMtime: row.fileMtime,
+    };
+  }
+
+  deleteLargeFile(fileId: string): void {
+    this.assertOpen();
+    this.db.prepare('DELETE FROM large_files WHERE fileId = ?').run(fileId);
   }
 
   close(): void {

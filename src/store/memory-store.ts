@@ -3,6 +3,8 @@ import type {
   ContextItem,
   GrepResult,
   IngestableMessage,
+  LargeFileInsert,
+  StoredLargeFile,
   StoredMessage,
   Store,
   StoredSummary,
@@ -22,6 +24,7 @@ export class MemoryStore implements Store {
   private summaryMessages = new Map<string, Set<string>>();
   private summaryParents = new Map<string, Set<string>>();
   private contextItemsByConversation = new Map<string, ContextItem[]>();
+  private largeFiles = new Map<string, StoredLargeFile>();
 
   private assertOpen(): void {
     if (this.closed) throw new StoreClosedError();
@@ -188,6 +191,36 @@ export class MemoryStore implements Store {
 
     const { content: _content, ...rest } = s;
     return rest;
+  }
+
+  insertLargeFile(file: LargeFileInsert): string {
+    this.assertOpen();
+    const conversationId = this.requireConversationId();
+    const fileId = randomUUID();
+    const stored: StoredLargeFile = { ...file, fileId, conversationId };
+    this.largeFiles.set(fileId, stored);
+    return fileId;
+  }
+
+  getLargeFile(fileId: string): StoredLargeFile | undefined {
+    this.assertOpen();
+    return this.largeFiles.get(fileId);
+  }
+
+  getLargeFileByPath(path: string): StoredLargeFile | undefined {
+    this.assertOpen();
+    const conversationId = this.requireConversationId();
+    for (const file of this.largeFiles.values()) {
+      if (file.path === path && file.conversationId === conversationId) {
+        return file;
+      }
+    }
+    return undefined;
+  }
+
+  deleteLargeFile(fileId: string): void {
+    this.assertOpen();
+    this.largeFiles.delete(fileId);
   }
 
   close(): void {
