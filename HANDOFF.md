@@ -171,6 +171,77 @@ Now that auth should work, re-check whether condensation still has a real logic/
 ### 3. v0.3 UI/rendering caveat still open
 Large-file interception backend worked in prior testing, but the user-facing read output may still have a separate interception/rendering issue.
 
+## What We Verified After the Auth Fix
+
+### Fresh live OAuth retest succeeded
+A fresh cmux retest after the auth propagation fix confirmed that issue `#023` is resolved in live use.
+
+Observed in a real session:
+- `summarize response.stopReason: 'stop'`
+- `errorMessage: undefined`
+- `responseParts: 1`
+- `contentTypes: ['text']`
+- non-zero `outputChars`
+- `store insertSummary persisted.persistedTokenCount > 0`
+- `store insertSummary persisted.persistedContentLen > 0`
+- `lcm_describe` worked on a real persisted summary ID
+- `lcm_expand` returned non-empty DAG-backed content
+- DB inspector reported healthy SQLite / FTS5 / large-file state
+
+Relevant successful live DBs:
+- OAuth fix retest with working summaries: `~/.pi/agent/lcm/b6eb2e2e-b93f-41a0-9a95-9fba548427b0.db`
+- second successful cmux DAG-tool retest: `~/.pi/agent/lcm/05794d58-ca2e-4af3-9fac-8d9e1d23a3cd.db`
+
+### Harness follow-up: backend looked healthy, prompt fidelity was weaker
+A real-use harness run created a healthy DB and exercised the backend deeply, but the model's one-shot prompt following was weaker than interactive cmux.
+
+Harness DB:
+- `~/.pi/agent/lcm/693e8400-3eac-43c3-9b33-1c2e67b5df77.db`
+
+What the harness confirmed:
+- SQLite integrity ✅
+- summaries persisted with non-zero content/token counts ✅
+- condensation reached depth 2 ✅
+- large-file entries created ✅
+- canary text (`LCM-CANARY-ALPHA-001`) was preserved inside leaf and condensed summaries ✅
+
+What the harness did **not** prove cleanly:
+- reliable live tool-following for `lcm_grep` / `lcm_describe` / `lcm_expand` inside a single giant one-shot prompt
+
+Interpretation:
+- backend behavior looked good
+- batch prompt fidelity was the weak link, not storage/summarization correctness
+
+### Dedicated v0.3 live test: large-file interception and retrieval worked
+A separate cmux session was used specifically to test the v0.3 large-file path.
+
+Relevant v0.3 DB:
+- `~/.pi/agent/lcm/f0ed7eb7-7448-4689-b1c3-c45914f08734.db`
+
+Observed in live use:
+- reading `TESTING.md` triggered `large file inspect`
+- interception fired with:
+  - `path: 'TESTING.md'`
+  - `estimatedTokens: 3622`
+  - `threshold: 500`
+  - `fileId: '3c2e405f-d5ea-4f16-904a-2a3309b38c63'`
+- user-facing tool output was replaced with the compact/truncated large-file view plus an `lcm_expand(...)` hint
+- DB inspector showed the file cached in `large_files`
+- `lcm_expand(fileId)` returned the stored file content successfully
+- `lcm_expand(fileId, offset=1500)` appeared to return content from the middle of the file, so pagination/offset behavior looks functionally correct
+
+Interpretation:
+- v0.3 backend path is working
+- user-facing interception/rendering worked in this run
+- pagination appears to work, though we did not capture a perfectly clean debug line proving the offset value on-screen
+
+### Practical assessment
+With issue `#024` hardening done, this looks usable for real dogfooding and likely usable as a genuinely helpful tool in day-to-day sessions.
+
+Current confidence level:
+- **Usable now for personal / experimental use:** yes
+- **Usable with much better confidence after #024:** yes
+- remaining concerns are mostly robustness/polish, not core architecture failure
 ---
 
 ## Key Files

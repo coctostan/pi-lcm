@@ -44,6 +44,27 @@ export interface PiSummarizerOptions {
   completeFn?: CompleteFn;
 }
 
+export class SummarizationUnavailableError extends Error {
+  readonly reason: 'error_response' | 'missing_text';
+  readonly stopReason?: string;
+  readonly providerErrorMessage?: string;
+  constructor(
+    reason: 'error_response' | 'missing_text',
+    stopReason?: string,
+    providerErrorMessage?: string,
+  ) {
+    super(
+      reason === 'error_response'
+        ? `Summarization failed: ${providerErrorMessage ?? 'provider returned stopReason="error".'}`
+        : 'Summarization returned no text content.',
+    );
+    this.name = 'SummarizationUnavailableError';
+    this.reason = reason;
+    this.stopReason = stopReason;
+    this.providerErrorMessage = providerErrorMessage;
+  }
+}
+
 /**
  * PiSummarizer — production Summarizer using pi-ai complete().
  * AC 15: resolves model via modelRegistry.find(provider, modelId), throws if not found.
@@ -112,7 +133,19 @@ export class PiSummarizer implements Summarizer {
       outputChars: textPart && 'text' in textPart ? textPart.text.length : 0,
       outputTokensEstimated: textPart && 'text' in textPart ? estimateTokens(textPart.text) : 0,
     });
-    return textPart && 'text' in textPart ? textPart.text : '';
+    if (response.stopReason === 'error') {
+      throw new SummarizationUnavailableError(
+        'error_response',
+        'error',
+        response.errorMessage,
+      );
+    }
+
+    if (!textPart || !('text' in textPart) || textPart.text.trim().length === 0) {
+      throw new SummarizationUnavailableError('missing_text');
+    }
+
+    return textPart.text;
 }
 }
 

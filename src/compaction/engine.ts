@@ -1,6 +1,9 @@
 import type { Store, ContextItem, StoredMessage } from '../store/types.ts';
 import type { Summarizer } from '../summarizer/summarizer.ts';
-import { summarizeWithEscalation } from '../summarizer/summarizer.ts';
+import {
+  SummarizationUnavailableError,
+  summarizeWithEscalation,
+} from '../summarizer/summarizer.ts';
 import { formatMessagesForSummary } from '../summarizer/format.ts';
 import { estimateTokens } from '../summarizer/token-estimator.ts';
 import { debugLog } from '../debug.ts';
@@ -108,6 +111,29 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
+function getSummarySkipReason(
+  error: SummarizationUnavailableError,
+): 'summary_error_response' | 'summary_missing_text' {
+  return error.reason === 'error_response'
+    ? 'summary_error_response'
+    : 'summary_missing_text';
+}
+
+function recordSummarySkip(
+  result: CompactionResult,
+  phase: 'leaf' | 'condensed',
+  error: SummarizationUnavailableError,
+): void {
+  const reason = getSummarySkipReason(error);
+  result.noOpReasons.push(reason);
+  debugLog('compaction summary skipped', {
+    phase,
+    reason,
+    stopReason: error.stopReason ?? null,
+    errorMessage: error.providerErrorMessage ?? null,
+  });
+}
+
 export async function runCompaction(
   store: Store,
   summarizer: Summarizer,
@@ -198,6 +224,10 @@ export async function runCompaction(
       });
     } catch (error) {
       if (signal.aborted || isAbortError(error)) break;
+      if (error instanceof SummarizationUnavailableError) {
+        recordSummarySkip(result, 'leaf', error);
+        break;
+      }
       throw error;
     }
 
@@ -210,6 +240,9 @@ export async function runCompaction(
       outputPreview: summaryContent.slice(0, 120),
     });
 
+    if (summaryContent.trim().length === 0) {
+      break;
+    }
     if (outputTokens >= inputTokens) {
       result.noOpReasons.push('leaf_not_smaller_than_input');
       break;
@@ -298,6 +331,10 @@ export async function runCompaction(
         });
       } catch (error) {
         if (signal.aborted || isAbortError(error)) break;
+        if (error instanceof SummarizationUnavailableError) {
+          recordSummarySkip(result, 'condensed', error);
+          break;
+        }
         throw error;
       }
 
