@@ -235,7 +235,7 @@ Users installing `pi-lcm` on an existing long session need a backfill path:
 |---------|-------|-------------|--------|
 | **v0.1** | Phase 1 | Zero-cost context filtering + `lcm_expand` | ✅ Done |
 | **v0.2** | Phase 2 | LLM summarization + SQLite DAG + `lcm_grep` | ✅ Done (not yet wired for production — see #011) |
-| **v0.3** | Phase 3 | Large file interception | Planned |
+| **v0.3** | Phase 3 | Large file interception + `lcm_expand` pagination | ✅ Done |
 | **v1.0** | Phase 3 complete | Full LCM feature parity with Volt/lossless-claw | Planned |
 | **v1.1** | Phase 4.1 | Megapowers phase-aware strategies | Planned |
 | **v1.2** | Phase 4.2–4.4 | Widget, cross-session, `/lcm` command | Planned |
