@@ -16,6 +16,7 @@ import type {
 import { StoreClosedError } from './types.ts';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema.ts';
 import { estimateTokens } from '../summarizer/token-estimator.ts';
+import { debugLog } from '../debug.ts';
 
 function isMemoryPath(path: string): boolean {
   return path === ':memory:';
@@ -239,6 +240,14 @@ export class SqliteStore implements Store {
     const summaryId = randomUUID();
     // Always compute tokenCount from content — do not trust caller-provided values.
     const tokenCount = estimateTokens(summary.content);
+    debugLog('store insertSummary preparing', {
+      depth: summary.depth,
+      kind: summary.kind,
+      inputTokenCount: summary.tokenCount,
+      computedTokenCount: tokenCount,
+      contentChars: summary.content.length,
+      contentPreview: summary.content.slice(0, 120),
+    });
     this.db
       .prepare(
         `INSERT INTO summaries(summaryId, conversationId, depth, kind, content, tokenCount, earliestAt, latestAt, descendantCount, createdAt)
@@ -256,6 +265,16 @@ export class SqliteStore implements Store {
         summary.descendantCount,
         summary.createdAt
       );
+    const verifyRow = this.db
+      .prepare('SELECT tokenCount, length(content) AS contentLen FROM summaries WHERE summaryId = ?')
+      .get(summaryId) as any;
+    debugLog('store insertSummary persisted', {
+      summaryId,
+      depth: summary.depth,
+      kind: summary.kind,
+      persistedTokenCount: verifyRow?.tokenCount ?? null,
+      persistedContentLen: verifyRow?.contentLen ?? null,
+    });
 
     return summaryId;
   }
@@ -376,6 +395,10 @@ export class SqliteStore implements Store {
     this.assertOpen();
     const row = this.db.prepare('SELECT content FROM summaries WHERE summaryId = ?').get(summaryId) as any;
     if (!row) throw new Error(`Summary not found: ${summaryId}`);
+    debugLog('store expandSummary hit', {
+      summaryId,
+      contentLen: typeof row.content === 'string' ? row.content.length : 0,
+    });
     return row.content;
   }
 

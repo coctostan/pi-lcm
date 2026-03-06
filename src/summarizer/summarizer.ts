@@ -7,6 +7,7 @@ import type {
 import type { ModelRegistry } from '@mariozechner/pi-coding-agent';
 import { getCondensePrompt, getLeafPrompt } from './prompts.ts';
 import { estimateTokens } from './token-estimator.ts';
+import { debugLog } from '../debug.ts';
 
 /**
  * Options for the summarize method.
@@ -38,7 +39,7 @@ export type CompleteFn = (
 ) => Promise<AssistantMessage>;
 
 export interface PiSummarizerOptions {
-  modelRegistry: Pick<ModelRegistry, 'find'>;
+  modelRegistry: Pick<ModelRegistry, 'find' | 'getApiKey'>;
   summaryModel: string; // "provider/modelId"
   completeFn?: CompleteFn;
 }
@@ -50,6 +51,7 @@ export interface PiSummarizerOptions {
 export class PiSummarizer implements Summarizer {
   private model: Model<Api>;
   private completeFn: CompleteFn;
+  private getApiKey: Pick<ModelRegistry, 'getApiKey'>['getApiKey'];
 
   constructor(opts: PiSummarizerOptions) {
     const slashIdx = opts.summaryModel.indexOf('/');
@@ -70,11 +72,20 @@ export class PiSummarizer implements Summarizer {
       (() => {
         throw new Error('completeFn not provided');
       });
+    this.getApiKey = opts.modelRegistry.getApiKey.bind(opts.modelRegistry);
   }
 
   async summarize(content: string, opts: SummarizeOptions): Promise<string> {
+    debugLog('summarize start', {
+      kind: opts.kind,
+      depth: opts.depth,
+      inputChars: content.length,
+      inputTokensEstimated: estimateTokens(content),
+      maxOutputTokens: opts.maxOutputTokens,
+    });
     const systemPrompt = opts.kind === 'leaf' ? getLeafPrompt() : getCondensePrompt(opts.depth);
 
+    const apiKey = await this.getApiKey(this.model);
     const response = await this.completeFn(
       this.model,
       {
@@ -82,12 +93,25 @@ export class PiSummarizer implements Summarizer {
         messages: [{ role: 'user', content, timestamp: Date.now() }],
       },
       {
+        apiKey,
         maxTokens: opts.maxOutputTokens,
         signal: opts.signal,
       },
     );
 
     const textPart = response.content.find((c: any) => c.type === 'text');
+    debugLog('summarize response', {
+      kind: opts.kind,
+      depth: opts.depth,
+      stopReason: response.stopReason,
+      errorMessage: response.errorMessage,
+      usage: response.usage,
+      responseParts: response.content.length,
+      contentTypes: response.content.map((c: any) => c?.type ?? typeof c),
+      textFound: Boolean(textPart && 'text' in textPart),
+      outputChars: textPart && 'text' in textPart ? textPart.text.length : 0,
+      outputTokensEstimated: textPart && 'text' in textPart ? estimateTokens(textPart.text) : 0,
+    });
     return textPart && 'text' in textPart ? textPart.text : '';
 }
 }

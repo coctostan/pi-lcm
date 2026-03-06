@@ -26,7 +26,7 @@ export const DEFAULT_CONFIG: LCMConfig = {
   leafTargetTokens: 1200,
   condensedTargetTokens: 2000,
   largeFileTokenThreshold: 25000,
-  summaryModel: "google/gemini-2.5-flash",
+  summaryModel: "anthropic/claude-haiku-4-5",
   incrementalMaxDepth: -1,
   leafMinFanout: 8,
   condensedMinFanout: 4,

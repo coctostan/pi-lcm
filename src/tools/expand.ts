@@ -6,6 +6,7 @@ import type { ContentStore } from '../context/content-store.ts';
 import type { Store, StoredLargeFile } from '../store/types.ts';
 import { ExpandResultSchema, LargeFileExpandResultSchema } from '../schemas.ts';
 import { truncateToTokenBudget } from './truncate.ts';
+import { debugLog } from '../debug.ts';
 
 function textResult(text: string): AgentToolResult<undefined> {
   return { content: [{ type: 'text', text }], details: undefined };
@@ -31,6 +32,13 @@ function expandLargeFile(
   rawOffset: number,
   maxExpandTokens: number,
 ): AgentToolResult<undefined> {
+  debugLog('expand large file request', {
+    id,
+    path: largeFile.path,
+    rawOffset,
+    maxExpandTokens,
+    totalTokens: largeFile.tokenCount,
+  });
   // AC 16: clamp negative offset
   const offset = Math.max(0, rawOffset);
   const charOffset = Math.floor(offset * 3.5 + 1e-6);
@@ -91,6 +99,13 @@ function expandLargeFile(
   }
 
   LargeFileExpandResultSchema.parse(output);
+  debugLog('expand large file response', {
+    id,
+    contentChars: chunk.length,
+    hasMore,
+    nextOffset: hasMore ? nextOffsetTokens : null,
+    stale,
+  });
   return textResult(JSON.stringify(output));
 }
 export function createExpandExecute(
@@ -102,6 +117,11 @@ export function createExpandExecute(
   return async (_toolCallId: string, params: { id: string; offset?: number }): Promise<AgentToolResult<undefined>> => {
     try {
       const { id } = params;
+      debugLog('expand request', {
+        id,
+        offset: params.offset ?? 0,
+        structuredMode,
+      });
 
       if (structuredMode) {
         if (id.startsWith('sum_') && dagStore) {
@@ -109,6 +129,10 @@ export function createExpandExecute(
             const content = dagStore.expandSummary(id);
             const truncated = truncateToTokenBudget(content, config.maxExpandTokens);
             const output = { id, source: 'dag' as const, content: truncated };
+            debugLog('expand dag summary response', {
+              id,
+              contentChars: truncated.length,
+            });
             ExpandResultSchema.parse(output);
             return textResult(JSON.stringify(output));
           } catch {
@@ -137,6 +161,10 @@ export function createExpandExecute(
                 const summaryContent = dagStore.expandSummary(id);
                 const truncated = truncateToTokenBudget(summaryContent, config.maxExpandTokens);
                 const output = { id, source: 'dag' as const, content: truncated };
+                debugLog('expand dag uuid fallback response', {
+                  id,
+                  contentChars: truncated.length,
+                });
                 ExpandResultSchema.parse(output);
                 return textResult(JSON.stringify(output));
               } catch {
@@ -147,6 +175,10 @@ export function createExpandExecute(
             if (msg !== undefined) {
               const truncated = truncateToTokenBudget(msg.content, config.maxExpandTokens);
               const output = { id, source: 'session' as const, content: truncated };
+              debugLog('expand message fallback response', {
+                id,
+                contentChars: truncated.length,
+              });
               ExpandResultSchema.parse(output);
               return textResult(JSON.stringify(output));
             }

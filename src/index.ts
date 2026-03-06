@@ -23,6 +23,7 @@ import { registerDescribeTool, createDescribeExecute } from './tools/describe.ts
 import { registerExpandTool, createExpandExecute } from './tools/expand.ts';
 import { registerGrepTool, createGrepExecute } from './tools/grep.ts';
 import { interceptLargeFile } from './large-files/interceptor.ts';
+import { debugLog } from './debug.ts';
 
 /**
  * pi-lcm extension entry point.
@@ -158,10 +159,20 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
         }
         // AC 5: Open conversation
         dagStore.openConversation(sessionId, ctx.cwd);
+        debugLog('session_start openConversation', {
+          sessionId,
+          cwd: ctx.cwd,
+          dbPath: join(dbDir, `${sessionId}.db`),
+        });
         reconcile(dagStore, branch);
         runIntegrity(dagStore);
         // AC 6: dagReady = true only after all succeed
         dagReady = true;
+        debugLog('session_start ready', {
+          dagReady,
+          contextItems: dagStore.getContextItems().length,
+          messages: dagStore.getMessagesAfter(-1).length,
+        });
         builder = new ContextBuilder(handler, dagStore);
       } catch (err) {
         // AC 10, 11, 12: Graceful degradation
@@ -210,11 +221,15 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
     if (!dagStore) return;
 
     ingestNewMessages(dagStore, ctx);
+    debugLog('agent_end ingested', {
+      ingested: dagStore.getLastIngestedSeq() + 1,
+      totalMessages: dagStore.getMessagesAfter(-1).length,
+    });
 
     if (!summarizer) return;
 
     try {
-      await runCompactionFn(
+      const compactionResult = await runCompactionFn(
         dagStore,
         summarizer,
         {
@@ -229,6 +244,7 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
         },
         new AbortController().signal,
       );
+      debugLog('agent_end compaction result', compactionResult);
     } catch (err) {
       console.error('pi-lcm: compaction error', err);
     }
@@ -246,6 +262,10 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
       },
       largeFileCacheDir,
     );
+    debugLog('tool_result interception result', {
+      toolName: (event as any).toolName,
+      intercepted: Boolean(result),
+    });
     return result;
   });
   pi.on('session_before_compact', async (event, _ctx) => {

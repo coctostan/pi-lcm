@@ -1,0 +1,19 @@
+# Real-use prompt sequence for pi-lcm regression testing
+# - one prompt per line
+# - blank lines and lines starting with # are ignored
+
+We are running a long-session memory regression test. Remember this marker exactly: LCM-CANARY-ALPHA-001.
+Summarize the purpose of this repository from README.md in 5 bullet points.
+Use tools to find runCompaction in src/compaction/engine.ts and explain when it runs.
+Find DEFAULT_CONFIG in src/config.ts and list the compaction-related defaults.
+Inspect src/compaction/engine.ts and explain the compaction flow in plain language.
+Remember this second marker: LCM-CANARY-BETA-002 and phrase compaction-overflow-check.
+Search tests for lcm_expand behavior and list key cases covered.
+Scan src/stress.test.ts and summarize what scenarios S1-S4 verify.
+Now use lcm_grep with query: LCM-CANARY.
+Use lcm_grep with query: compaction-overflow-check.
+If lcm_grep returned at least one summary id, run lcm_describe on one summary id and report tokenCount.
+If you have a summary id from above, run lcm_expand on that summary id and return the first 6 lines.
+Use lcm_grep with query: runCompaction and include both message and summary hits.
+If any summary id appears in that search, run lcm_expand on one and explain whether it preserved key details.
+Give a compact final report with: (a) did compaction happen, (b) were summary expansions non-empty, (c) any tool errors.

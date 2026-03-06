@@ -3,6 +3,7 @@ import type { Summarizer } from '../summarizer/summarizer.ts';
 import { summarizeWithEscalation } from '../summarizer/summarizer.ts';
 import { formatMessagesForSummary } from '../summarizer/format.ts';
 import { estimateTokens } from '../summarizer/token-estimator.ts';
+import { debugLog } from '../debug.ts';
 import { selectCondensationChunk, selectLeafChunk } from './chunk-selector.ts';
 import type { CompactionConfig, CompactionResult } from './types.ts';
 
@@ -129,6 +130,14 @@ export async function runCompaction(
 
   try {
 
+  debugLog('compaction start', {
+    force,
+    freshTailCount: config.freshTailCount,
+    leafChunkTokens: config.leafChunkTokens,
+    leafTargetTokens: config.leafTargetTokens,
+    condensedTargetTokens: config.condensedTargetTokens,
+    condensedMinFanout: config.condensedMinFanout,
+  });
   const result: CompactionResult = {
     actionTaken: false,
     summariesCreated: 0,
@@ -168,6 +177,13 @@ export async function runCompaction(
     const chunkContent = formatMessagesForSummary(messages);
     const priorContextPrefix =
       chunkStartIndex >= 0 ? getPriorSummaryContext(contextItems, chunkStartIndex, store) : '';
+    debugLog('compaction leaf chunk selected', {
+      messageCount: messages.length,
+      messageIds,
+      chunkChars: chunkContent.length,
+      chunkTokensEstimated: estimateTokens(chunkContent),
+      priorContextChars: priorContextPrefix.length,
+    });
 
     const input = priorContextPrefix.length > 0
       ? `${priorContextPrefix}${chunkContent}`
@@ -187,6 +203,12 @@ export async function runCompaction(
 
     const inputTokens = estimateTokens(input);
     const outputTokens = estimateTokens(summaryContent);
+    debugLog('compaction leaf summary generated', {
+      inputTokens,
+      outputTokens,
+      outputChars: summaryContent.length,
+      outputPreview: summaryContent.slice(0, 120),
+    });
 
     if (outputTokens >= inputTokens) {
       result.noOpReasons.push('leaf_not_smaller_than_input');
@@ -202,6 +224,10 @@ export async function runCompaction(
       latestAt: Math.max(...messages.map(m => m.createdAt)),
       descendantCount: messages.length,
       createdAt: Date.now(),
+    });
+    debugLog('compaction leaf summary stored', {
+      summaryId,
+      messageCount: messages.length,
     });
 
     store.linkSummaryMessages(summaryId, messageIds);
@@ -255,6 +281,13 @@ export async function runCompaction(
         .filter((s): s is NonNullable<typeof s> => s !== undefined);
       if (children.length < config.condensedMinFanout) continue;
     const input = children.map(s => s.content).join('\n\n');
+    debugLog('compaction condensation chunk selected', {
+      depth,
+      childCount: children.length,
+      childIds,
+      inputChars: input.length,
+      inputTokensEstimated: estimateTokens(input),
+    });
       let summaryContent: string;
       try {
         summaryContent = await summarizeWithEscalation(summarizer, input, {
@@ -270,6 +303,13 @@ export async function runCompaction(
 
       const condensationInputTokens = estimateTokens(input);
       const condensationOutputTokens = estimateTokens(summaryContent);
+      debugLog('compaction condensed summary generated', {
+        depth: depth + 1,
+        inputTokens: condensationInputTokens,
+        outputTokens: condensationOutputTokens,
+        outputChars: summaryContent.length,
+        outputPreview: summaryContent.slice(0, 120),
+      });
       if (condensationOutputTokens >= condensationInputTokens) {
         result.noOpReasons.push('condensation_not_smaller_than_input');
         continue;
@@ -284,6 +324,11 @@ export async function runCompaction(
         descendantCount: children.reduce((acc, s) => acc + s.descendantCount, 0),
         createdAt: Date.now(),
       });
+    debugLog('compaction condensed summary stored', {
+      parentId,
+      depth: depth + 1,
+      childCount: childIds.length,
+    });
     store.linkSummaryParents(parentId, childIds);
       store.replaceContextItems(replaceSummaryChunkWithParent(currentItems, childIds, parentId));
 
@@ -301,6 +346,7 @@ export async function runCompaction(
   }
 
   if (!result.actionTaken && result.noOpReasons.length === 0) {
+  debugLog('compaction end', result);
     result.noOpReasons.push('eligible_leaves_below_min');
   }
   return result;
