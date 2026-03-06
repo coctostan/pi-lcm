@@ -8,7 +8,10 @@
   },
   "scripts": {
     "build": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test 'src/**/*.test.ts'"
+    "test": "node --experimental-strip-types --test 'src/**/*.test.ts'",
+    "harness:lcm": "bash scripts/lcm-harness.sh",
+    "harness:lcm:real-use": "bash scripts/lcm-harness.sh --prompts-file scripts/prompts/lcm-real-use.txt",
+    "inspect-db": "node --experimental-strip-types scripts/inspect-live-db.ts"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*"

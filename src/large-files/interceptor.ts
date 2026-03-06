@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Store } from '../store/types.ts';
 import { explore } from './explorer.ts';
+import { debugLog } from '../debug.ts';
 
 export interface InterceptConfig {
   largeFileTokenThreshold: number;
@@ -48,6 +49,13 @@ export async function interceptLargeFileWithExplorer(
   }
   const fullText = textParts.join('\n');
   const estimatedTokens = Math.floor(fullText.length / 3.5);
+  debugLog('large file inspect', {
+    toolName: event.toolName,
+    toolCallId: event.toolCallId,
+    path: event.input.path,
+    estimatedTokens,
+    threshold: config.largeFileTokenThreshold,
+  });
 
   if (estimatedTokens < config.largeFileTokenThreshold) {
     return undefined;
@@ -71,6 +79,11 @@ export async function interceptLargeFileWithExplorer(
     return undefined; // store error -> pass-through
   }
   if (existing && existing.fileMtime === fileMtime) {
+    debugLog('large file cache hit', {
+      path: filePath,
+      fileId: existing.fileId,
+      estimatedTokens,
+    });
     let summary: string;
     try {
       summary = explorerFn(filePath, fullText);
@@ -85,6 +98,12 @@ export async function interceptLargeFileWithExplorer(
   }
 
   // Mtime changed — delete old entry and its cache file (AC 10)
+  debugLog('large file cache stale', {
+    path: filePath,
+    oldFileId: existing?.fileId,
+    previousMtime: existing?.fileMtime,
+    currentMtime: fileMtime,
+  });
   if (existing && existing.fileMtime !== fileMtime) {
     try { unlinkSync(existing.storagePath); } catch { /* cache file may already be gone */ }
     try { store.deleteLargeFile(existing.fileId); } catch { /* ignore */ }
@@ -123,6 +142,13 @@ export async function interceptLargeFileWithExplorer(
     });
 
     const replacementText = `${summary}\n\n~${estimatedTokens} tokens total. Use lcm_expand("${fileId}") to retrieve content.`;
+    debugLog('large file intercepted', {
+      path: filePath,
+      fileId,
+      estimatedTokens,
+      storagePath,
+      summaryChars: summary.length,
+    });
 
     return {
       content: [{ type: 'text', text: replacementText }],

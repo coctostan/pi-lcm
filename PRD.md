@@ -78,7 +78,7 @@ Pi sessions accumulate context noise over time. As conversation length grows, th
 
 *Acceptance Criteria:*
 - After each turn (`agent_end`), check if raw messages outside the fresh tail exceed `leafChunkTokens` (default 20K)
-- If yes, trigger async leaf summarization using the configured cheap model (default: `google/gemini-2.5-flash`)
+- If yes, trigger async leaf summarization using the configured cheap model (default: `anthropic/claude-haiku-4-5`)
 - Summary is stored in SQLite with: depth=0, kind=leaf, source message IDs, token counts, timestamps
 - Summary metadata is persisted via `pi.appendEntry()` for crash recovery
 - Active context for the next turn uses the summary node in place of the raw messages
@@ -184,7 +184,7 @@ Pi sessions accumulate context noise over time. As conversation length grows, th
 ## Non-Functional Requirements
 
 **NFR-01: Summarization latency**
-- Leaf summarization (async, `agent_end`) must complete within 5 seconds for chunks ≤ 20K tokens using Gemini Flash
+- Leaf summarization (async, `agent_end`) must complete within 5 seconds for chunks ≤ 20K tokens using Claude Haiku 4.5
 - Summarization must not block the model's response display — fires after the response is shown
 
 **NFR-02: Zero-cost continuity**
@@ -231,7 +231,7 @@ interface LCMConfig {
   largeFileTokenThreshold: number; // 25000 — files above this are intercepted
 
   // Model selection
-  summaryModel: string;           // "google/gemini-2.5-flash"
+  summaryModel: string;           // "anthropic/claude-haiku-4-5"
 
   // Condensation
   incrementalMaxDepth: number;    // -1 = unlimited cascading
@@ -253,7 +253,7 @@ interface LCMConfig {
 | Metric | Target |
 |---|---|
 | Coherence in 100-turn sessions | No "I've lost track" responses in user-observed testing |
-| Summarization cost per session | < $0.01 using Gemini Flash (100-turn session estimate) |
+| Summarization cost per session | < $0.01 using Claude Haiku 4.5 (100-turn session estimate) |
 | Context event overhead (below threshold) | < 1ms p99 |
 | Summarization latency (async) | < 5s p95 for 20K token chunks |
 | Expand latency | < 100ms (SQLite lookup, no LLM call) |

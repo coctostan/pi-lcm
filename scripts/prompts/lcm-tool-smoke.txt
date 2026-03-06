@@ -1,0 +1,9 @@
+# Quick smoke test: forces lcm_grep/describe/expand tool calls
+# 6 prompts — fast, deterministic tool-path check
+
+Reply in 2 lines and include the word test in both lines.
+Reply again and include the word test three times.
+Reply again and include phrase summary test marker gamma.
+Use the lcm_grep tool with query: test. You must call the tool and return raw IDs grouped by kind.
+If the lcm_grep output includes at least one summary ID, call lcm_describe on one summary ID and report tokenCount.
+If you have a summary ID from the previous step, call lcm_expand on that same summary ID and show first 5 lines.

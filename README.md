@@ -13,7 +13,7 @@ Long sessions accumulate context noise: tool results from hours ago, file reads 
 | Layer | Mechanic | Cost |
 |-------|----------|------|
 | **Phase 1** — Context filtering | Strips tool results older than `freshTailCount` turns; retrievable via `lcm_expand` | Zero |
-| **Phase 2** — LLM summarization | Summarizes older message spans into a hierarchical SQLite DAG using Gemini Flash; model sees structured summaries instead of placeholders | ~$0.001–0.005/session |
+| **Phase 2** — LLM summarization | Summarizes older message spans into a hierarchical SQLite DAG using Claude Haiku 4.5; model sees structured summaries instead of placeholders | ~$0.001–0.005/session |
 | **Phase 3** — Large file interception | Intercepts oversized `read` results, replaces with structural exploration summary, caches full content for paginated retrieval via `lcm_expand` | Zero |
 
 Sessions shorter than `freshTailCount` turns see **zero behavioral difference** from vanilla pi.
@@ -30,7 +30,7 @@ context event fires
   │
   └─ above threshold?
        ├─ Phase 2 (DAG available): inject XML summary nodes for older spans
-       │    └─ summaries created async in agent_end via Gemini Flash
+       │    └─ summaries created async in agent_end via Claude Haiku 4.5
        │
        └─ Phase 1 (no DAG): strip old tool results (replace with placeholder)
             └─ register lcm_expand tool for retrieval
@@ -79,7 +79,7 @@ Config file: `~/.pi/agent/extensions/pi-lcm.config.json`
 | `leafTargetTokens` | `1200` | Target size for leaf summaries |
 | `condensedTargetTokens` | `2000` | Target size for condensed summaries |
 | `condensedMinFanout` | `4` | Min summaries per condensed node before triggering condensation |
-| `summaryModel` | `google/gemini-2.5-flash` | Model used for summarization (cheap model recommended) |
+| `summaryModel` | `anthropic/claude-haiku-4-5` | Model used for summarization (cheap model recommended) |
 
 Example — tighter threshold, smaller expand budget, higher large-file bar:
 

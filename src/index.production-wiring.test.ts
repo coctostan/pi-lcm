@@ -63,11 +63,14 @@ describe('production wiring: session_start creates SqliteStore + PiSummarizer (A
       content: [{ type: 'text' as const, text: 'mock summary' }],
     });
 
-    const mockModel = { id: 'gemini-2.5-flash', provider: 'google', api: 'google' } as any;
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic', api: 'anthropic' } as any;
     const mockModelRegistry = {
       find(provider: string, modelId: string) {
-        if (provider === 'google' && modelId === 'gemini-2.5-flash') return mockModel;
+        if (provider === 'anthropic' && modelId === 'claude-haiku-4-5') return mockModel;
         return undefined;
+      },
+      async getApiKey(_model: any) {
+        return 'oauth-token';
       },
     } as any;
 
@@ -146,7 +149,7 @@ describe('production wiring: graceful degradation on SqliteStore failure (AC 10,
           getBranch: () => [],
         },
         cwd: '/tmp/test-cwd',
-        modelRegistry: { find: () => ({}) } as any,
+        modelRegistry: { find: () => ({}), getApiKey: async () => 'oauth-token' } as any,
         ui: { setStatus() {} },
         getContextUsage: () => undefined,
       } as any;
@@ -204,6 +207,7 @@ describe('production wiring: graceful degradation on PiSummarizer failure (AC 11
     // modelRegistry.find returns undefined — PiSummarizer will throw "Model not found"
     const failingModelRegistry = {
       find: () => undefined,
+      getApiKey: async () => 'oauth-token',
     } as any;
 
     const logged: string[] = [];
@@ -269,11 +273,14 @@ describe('production wiring: session_shutdown closes production store (AC 18)', 
       content: [{ type: 'text' as const, text: 'mock summary' }],
     });
 
-    const mockModel = { id: 'gemini-2.5-flash', provider: 'google', api: 'google' } as any;
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic', api: 'anthropic' } as any;
     const mockModelRegistry = {
       find(provider: string, modelId: string) {
-        if (provider === 'google' && modelId === 'gemini-2.5-flash') return mockModel;
+        if (provider === 'anthropic' && modelId === 'claude-haiku-4-5') return mockModel;
         return undefined;
+      },
+      async getApiKey(_model: any) {
+        return 'oauth-token';
       },
     } as any;
 

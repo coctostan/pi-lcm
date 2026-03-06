@@ -5,19 +5,20 @@ import { PiSummarizer } from './summarizer.ts';
 describe('PiSummarizer', () => {
   it('resolves model via modelRegistry.find(provider, modelId) and throws if not found (AC 15)', () => {
     const mockRegistry = {
-      find: (provider: string, modelId: string) => undefined,
+      find: (_provider: string, _modelId: string) => undefined,
+      getApiKey: async (_model: any) => undefined,
     };
 
     assert.throws(
       () =>
         new PiSummarizer({
           modelRegistry: mockRegistry as any,
-          summaryModel: 'google/gemini-2.5-flash',
+          summaryModel: 'anthropic/claude-haiku-4-5',
         }),
       (err: any) => {
         assert.ok(err instanceof Error);
         assert.ok(
-          err.message.includes('google/gemini-2.5-flash'),
+          err.message.includes('anthropic/claude-haiku-4-5'),
           `Error should include model string, got: ${err.message}`,
         );
         return true;
@@ -26,37 +27,38 @@ describe('PiSummarizer', () => {
   });
 
   it('resolves model successfully when modelRegistry.find returns a model (AC 15)', () => {
-    const mockModel = { id: 'gemini-2.5-flash', provider: 'google' };
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic' };
     const findCalls: Array<{ provider: string; modelId: string }> = [];
     const mockRegistry = {
       find: (provider: string, modelId: string) => {
         findCalls.push({ provider, modelId });
         return mockModel;
       },
+      getApiKey: async (_model: any) => undefined,
     };
 
     const summarizer = new PiSummarizer({
       modelRegistry: mockRegistry as any,
-      summaryModel: 'google/gemini-2.5-flash',
+      summaryModel: 'anthropic/claude-haiku-4-5',
     });
 
     assert.ok(summarizer);
     assert.strictEqual(findCalls.length, 1);
-    assert.strictEqual(findCalls[0]!.provider, 'google');
-    assert.strictEqual(findCalls[0]!.modelId, 'gemini-2.5-flash');
+    assert.strictEqual(findCalls[0]!.provider, 'anthropic');
+    assert.strictEqual(findCalls[0]!.modelId, 'claude-haiku-4-5');
   });
 
   it('calls complete() with leaf prompt for kind "leaf" and returns text content (AC 16, 17)', async () => {
-    const mockModel = { id: 'gemini-2.5-flash', provider: 'google' };
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic' };
     const completeCalls: Array<{ model: any; context: any; options: any }> = [];
     const mockComplete = async (model: any, context: any, options?: any) => {
       completeCalls.push({ model, context, options });
       return {
         role: 'assistant' as const,
         content: [{ type: 'text' as const, text: 'This is a summary of the conversation.' }],
-        api: 'google-generative-ai' as const,
-        provider: 'google',
-        model: 'gemini-2.5-flash',
+        api: 'anthropic' as const,
+        provider: 'anthropic',
+        model: 'claude-haiku-4-5',
         usage: {
           input: 100,
           output: 20,
@@ -71,8 +73,8 @@ describe('PiSummarizer', () => {
     };
 
     const summarizer = new PiSummarizer({
-      modelRegistry: { find: () => mockModel } as any,
-      summaryModel: 'google/gemini-2.5-flash',
+      modelRegistry: { find: () => mockModel, getApiKey: async () => 'oauth-token' } as any,
+      summaryModel: 'anthropic/claude-haiku-4-5',
       completeFn: mockComplete as any,
     });
 
@@ -94,19 +96,20 @@ describe('PiSummarizer', () => {
     assert.strictEqual(call.context.messages[0].role, 'user');
     assert.strictEqual(call.context.messages[0].content, 'Some conversation content');
     assert.strictEqual(call.options.maxTokens, 500);
+    assert.strictEqual(call.options.apiKey, 'oauth-token');
   });
 
   it('calls complete() with condense prompt for kind "condensed" (AC 16)', async () => {
-    const mockModel = { id: 'gemini-2.5-flash', provider: 'google' };
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic' };
     const completeCalls: Array<{ context: any }> = [];
     const mockComplete = async (_model: any, context: any, _options?: any) => {
       completeCalls.push({ context });
       return {
         role: 'assistant' as const,
         content: [{ type: 'text' as const, text: 'Condensed summary' }],
-        api: 'google-generative-ai' as const,
-        provider: 'google',
-        model: 'gemini-2.5-flash',
+        api: 'anthropic' as const,
+        provider: 'anthropic',
+        model: 'claude-haiku-4-5',
         usage: {
           input: 100,
           output: 20,
@@ -121,8 +124,8 @@ describe('PiSummarizer', () => {
     };
 
     const summarizer = new PiSummarizer({
-      modelRegistry: { find: () => mockModel } as any,
-      summaryModel: 'google/gemini-2.5-flash',
+      modelRegistry: { find: () => mockModel, getApiKey: async () => 'oauth-token' } as any,
+      summaryModel: 'anthropic/claude-haiku-4-5',
       completeFn: mockComplete as any,
     });
 
@@ -142,16 +145,16 @@ describe('PiSummarizer', () => {
   });
 
   it('propagates the signal option to complete() for abort support (AC 18)', async () => {
-    const mockModel = { id: 'gemini-2.5-flash', provider: 'google' };
+    const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic' };
     let capturedOptions: any = null;
     const mockComplete = async (_model: any, _context: any, options?: any) => {
       capturedOptions = options;
       return {
         role: 'assistant' as const,
         content: [{ type: 'text' as const, text: 'result' }],
-        api: 'google-generative-ai' as const,
-        provider: 'google',
-        model: 'gemini-2.5-flash',
+        api: 'anthropic' as const,
+        provider: 'anthropic',
+        model: 'claude-haiku-4-5',
         usage: {
           input: 0,
           output: 0,
@@ -166,8 +169,8 @@ describe('PiSummarizer', () => {
     };
 
     const summarizer = new PiSummarizer({
-      modelRegistry: { find: () => mockModel } as any,
-      summaryModel: 'google/gemini-2.5-flash',
+      modelRegistry: { find: () => mockModel, getApiKey: async () => 'oauth-token' } as any,
+      summaryModel: 'anthropic/claude-haiku-4-5',
       completeFn: mockComplete as any,
     });
 
@@ -181,5 +184,6 @@ describe('PiSummarizer', () => {
 
     assert.ok(capturedOptions, 'Options should have been passed to complete()');
     assert.strictEqual(capturedOptions.signal, ac.signal, 'Signal should be propagated to complete()');
+    assert.strictEqual(capturedOptions.apiKey, 'oauth-token', 'API key/token should be propagated to complete()');
   });
 });

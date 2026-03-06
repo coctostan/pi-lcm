@@ -1,261 +1,205 @@
-# pi-lcm Handoff — Real-World Testing (v0.3)
+# pi-lcm Handoff
 
-**Branch:** `docs/condensation-analysis-and-testing-process`  
-**Tests:** all 346 passing  
-**Last session:** condensation debug instrumentation + live validation
+_Updated: 2026-03-06_
 
----
+## What This Project Is
 
-## What Just Happened
+pi-lcm is a pi extension that manages context window noise in long coding sessions. It strips, summarizes, and indexes older conversation content so the model's context stays clean while all detail remains retrievable via tools.
 
-We did the first structured live validation of the compaction pipeline:
+**Implemented phases:**
+- **Phase 1 (✅ working):** Strips tool results older than `freshTailCount` turns, stores them, retrieves via `lcm_expand`
+- **Phase 2 (🟡 under live-debug):** Hierarchical SQLite DAG of summaries using a cheap model. Provides `lcm_grep`, `lcm_describe`, `lcm_expand`
+- **Phase 3 (✅ backend mostly working):** Large-file interception, file cache, paginated `lcm_expand`
 
-1. **Added debug instrumentation** to `src/compaction/engine.ts`
-   - Enabled by `PI_LCM_DEBUG=1`
-   - Logs detailed events for both leaf and condensation paths
-   - Events include: eligibility checks, skip reasons, guard failures, token comparisons, summary creation
+**Tech:** Node.js + TypeScript, built-in `node:sqlite`, pi extension API, `pi-ai` for summarization.
 
-2. **Validated condensation in live runs** — two configs:
-   - Aggressive (`freshTailCount=8`, `condensedMinFanout=3`): condensation fires readily
-   - Default (`freshTailCount=32`, `condensedMinFanout=4`): condensation fires correctly after ~20 turns
-
-3. **Wrote 3 docs**, committed to the branch:
-   - `docs/condensation-validation-analysis.md` — analysis + bugs found
-   - `docs/testing/stress-testing-process.md`
-   - `docs/testing/real-world-testing-process.md`
+**Testing:** See [TESTING.md](./TESTING.md) and `docs/testing/handoff-2026-03-06-haiku-retest.md`.
 
 ---
 
-## Bugs Found
+## Most Important New Finding
 
-### A) Leaf guard uses inflated input token count (P1 — not fixed yet)
+Issue `#023` was traced to **authentication**, not SQLite and not the Haiku model name.
 
-`src/compaction/engine.ts` leaf guard:
+### Root cause
+`PiSummarizer` was calling `pi-ai complete()` with:
+- `maxTokens`
+- `signal`
 
+but **without** an `apiKey` / OAuth token.
+
+That meant the extension-side summarizer was relying only on environment variables, while the real pi session was authenticated via pi's `AuthStorage` / `ModelRegistry` OAuth flow.
+
+So the main chat model worked, but the summarizer helper failed auth.
+
+### Exact live failure shape captured
+In a fresh live cmux session, `complete()` returned an error-shaped assistant message:
+
+```txt
+stopReason: 'error'
+errorMessage: 'Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the "X-Api-Key" or "Authorization" headers to be explicitly omitted'
+responseParts: 0
+contentTypes: []
 ```
-inputTokens = estimateTokens(priorSummaryContext + chunkContent)
-outputTokens = estimateTokens(summaryContent)
-```
 
-`priorSummaryContext` is passed to the summarizer as scaffolding, but only the
-`chunkContent` messages are actually replaced in context. So the guard can pass
-even when the summary is larger than the replaced chunk, causing context total
-tokens to increase after a nominally successful leaf compression.
-
-**Signal:** `leaf_summary_created` followed by `leaf_sweep_stopped_context_not_decreasing` on the very next iteration.
-
-**Fix needed:** compare `outputTokens` against chunk-only token sum, not full summarizer input.
-
-### B) Monotonic stop can halt too early (P2 — minor)
-
-`context_tokens_not_decreasing` stops the sweep even when structural progress
-was made and the increase is small. Reduces compaction throughput per turn.
+The old code then treated that as an empty summary and persisted it.
 
 ---
 
-## What v0.3 Added (Test This Session)
+## Code Change Made Today
 
-v0.3 added the **large file interception pipeline**. None of this has had live testing:
+### Fix implemented
+`PiSummarizer` now resolves auth from pi's model registry and passes it to `complete()`.
 
-| Feature | Files |
-|---------|-------|
-| `tool_result` hook — intercepts `read` tool results > `largeFileTokenThreshold` | `src/large-files/interceptor.ts` |
-| Structural explorer — generates compact summary of file contents | `src/large-files/explorer.ts` |
-| `large_files` SQLite table — caches full file content | `src/store/sqlite-store.ts` |
-| `lcm_expand` pagination — `offset` param for large files | `src/tools/expand.ts` |
+Changed files:
+- `src/summarizer/summarizer.ts`
+- `src/summarizer/summarizer.test.ts`
+- `src/index.production-wiring.test.ts`
 
-**How it works end-to-end:**
-1. Agent reads a large file via the `read` tool
-2. If result > `largeFileTokenThreshold` tokens (~25K), interception fires
-3. Full content saved to `~/.pi/agent/lcm-files/<uuid>.txt` + `large_files` table
-4. Context sees a compact structural summary instead (for .ts/.js: exports list; other: line count + first ~60 lines)
-5. `lcm_expand("<file-id>")` retrieves paginated content; `lcm_expand("<file-id>", offset=4000)` for page 2
+### What changed in behavior
+Before:
+- used `ctx.modelRegistry.find(...)`
+- did **not** use `ctx.modelRegistry.getApiKey(...)`
+- `complete()` got no auth token in live OAuth setups
 
-**Key config:**
-```json
-{
-  "largeFileTokenThreshold": 25000
-}
-```
-Default is 25000 tokens. For testing, set lower (e.g. 500) to trigger on any file read.
+Now:
+- still resolves model via `find(...)`
+- also resolves auth via `getApiKey(model)`
+- passes that token as `options.apiKey` to `complete()`
 
----
-
-## Real-World Testing Goal This Session
-
-Test **all three layers together** in a real interactive pi session:
-1. Compaction/condensation (already partially validated — confirm still clean)
-2. v0.3 large file interception and pagination
-3. Full tool chain: `lcm_grep` → `lcm_describe` → `lcm_expand` for both summaries and large files
+### Validation
+- `npm test` ✅
+- `npm run build` ✅
 
 ---
 
-## Suggested Test Protocol
+## Current Debug Instrumentation
 
-### Setup
+Temporary extra logging is still present in `src/summarizer/summarizer.ts` for live verification.
+
+`summarize response` currently logs:
+- `stopReason`
+- `errorMessage`
+- `usage`
+- `responseParts`
+- `contentTypes`
+- `outputChars`
+- `outputTokensEstimated`
+
+Keep this for the next live retest. Remove it after confirming the fix.
+
+---
+
+## What Happened in the Last Live Retest
+
+Fresh live session confirmed:
+- summarizer model was `anthropic/claude-haiku-4-5`
+- large-file interception worked
+- compaction fired
+- condensation path was reachable
+- but summaries were empty because auth failed before text was produced
+
+Relevant DBs:
+- failing pre-fix session: `~/.pi/agent/lcm/b5a99f69-5bba-4861-9bae-36f6eae149cf.db`
+- traced auth-failure session: `~/.pi/agent/lcm/63771fe7-301a-472b-9396-3ab31751a3a1.db`
+
+---
+
+## Recommended Next Step: Fresh Live OAuth Retest
+
+Run a brand-new session:
 
 ```bash
-cd /Users/maxwellnewman/pi/workspace/pi-lcm
+PI_LCM_DEBUG=1 pi --no-extensions -e ./src/index.ts --session-dir /tmp/pi-lcm-haiku-retest-$(date +%s) --model anthropic/claude-haiku-4-5
 ```
 
-Write an aggressive test config to trigger everything faster:
-
-```json
-{
-  "freshTailCount": 8,
-  "leafChunkTokens": 5000,
-  "leafTargetTokens": 600,
-  "condensedTargetTokens": 400,
-  "condensedMinFanout": 3,
-  "largeFileTokenThreshold": 500
-}
-```
-
-Save to `~/.pi/agent/extensions/pi-lcm.config.json`.
-
-> The low `largeFileTokenThreshold` (500 tokens ≈ ~1750 chars) means any medium-sized file read will trigger interception. Good for testing. Restore original config after.
-
-### Launch
+Suggested flow:
+1. Plant canary early:
+   - `LCM-CANARY-HAIKU-003`
+2. Read enough real files to trigger compaction:
+   - `ROADMAP.md`
+   - `PRD.md`
+   - `TESTING.md`
+   - `ARCHITECTURE.md`
+   - `HANDOFF.md`
+3. Watch for these logs:
+   - `session_start ready`
+   - `agent_end ingested`
+   - `summarize start`
+   - `summarize response`
+   - `store insertSummary persisted`
+   - `agent_end compaction result`
+4. Then force tool use:
+   - `lcm_grep`
+   - `lcm_describe`
+   - `lcm_expand`
+5. Inspect the DB:
 
 ```bash
-SESSION_DIR=/tmp/pi-lcm-v03-test-$(date +%s)
-PI_LCM_DEBUG=1 pi \
-  --no-extensions \
-  -e ./src/index.ts \
-  --session-dir "$SESSION_DIR" \
-  --model anthropic/claude-haiku-4-5
+node --experimental-strip-types scripts/inspect-live-db.ts ~/.pi/agent/lcm/<uuid>.db
 ```
-
-### Turn Sequence (suggested)
-
-**Turns 1–3: Plant markers + check baseline**
-```
-Remember marker LCM-V3-ALPHA-001 and reply with 'acknowledged'.
-```
-```
-Remember marker LCM-V3-BETA-002. In two sentences, what is the purpose of a DAG in a summarization system?
-```
-```
-Remember marker LCM-V3-GAMMA-003. Briefly explain how SQLite WAL mode helps with crash safety.
-```
-
-**Turns 4–10: Generate token mass (gets leaf compaction going)**
-```
-Turn N: remember marker LCM-V3-DELTA-00N and give one sentence about [any technical topic].
-```
-Repeat for turns 4–10 with incrementing numbers.
-
-**Turn 11+: Trigger large file interception**
-```
-Read the file /Users/maxwellnewman/pi/workspace/pi-lcm/src/compaction/engine.ts and summarize what it does.
-```
-> With `largeFileTokenThreshold=500` this should intercept and return a structural summary instead of full content.
-
-Watch debug output for:
-- `tool_result` interception log
-- `large_files` table entry
-- Context shows structural summary, not full file
-
-**Verify file ID from the structural summary shown in context, then:**
-```
-Call lcm_expand with the file ID shown in the summary above and return the first page of content.
-```
-```
-Now call lcm_expand with the same ID and offset=600 to get the second page.
-```
-
-**Test summary tool chain:**
-```
-Call lcm_grep with query "LCM-V3-ALPHA-001" and return the raw JSON.
-```
-```
-Call lcm_describe with the summary ID returned above and show all metadata fields.
-```
-```
-Call lcm_expand with that summary ID and return the content.
-```
-
-**Validate canary recall:**
-```
-What were all the LCM-V3 markers you've been asked to remember in this session?
-```
-> If condensation is working, some markers will be in summaries; model should still enumerate them.
-
-### Post-Run DB Inspection
-
-Get session ID from startup debug output, then:
-
-```bash
-node --experimental-strip-types scripts/inspect-live-db.ts ~/.pi/agent/lcm/<session-id>.db
-```
-
-> **Note:** `scripts/` directory does not exist on the current branch. You'll need the db path from
-> the startup log and the `inspect-live-db.ts` script. Check if `scripts/inspect-live-db.ts` exists;
-> if not, inspect manually with sqlite3 or recreate it.
 
 ---
 
-## Acceptance Criteria
+## Success Criteria for the Next Session
 
-All of these should pass for a clean v0.3 live validation:
-
-- [ ] No crashes or stack traces during session
-- [ ] Compaction fires (`leaf_summary_created` in debug output)
-- [ ] Condensation fires with aggressive config (`condensation_summary_created`)
-- [ ] Large file interception fires when reading `engine.ts` (`largeFileTokenThreshold=500`)
-- [ ] Intercepted result shows structural summary (export list), not full file
-- [ ] `lcm_expand("<file-id>")` returns first page of file content correctly
-- [ ] `lcm_expand("<file-id>", offset=600)` returns second page (different content)
-- [ ] `lcm_grep` returns hits for planted canary markers
-- [ ] `lcm_describe` returns valid metadata for a summary ID
-- [ ] `lcm_expand` on a summary ID returns non-empty content
-- [ ] Canary markers from early turns are still recalled after compaction
-- [ ] DB inspector shows: integrity OK, FTS5 functional, `large_files` table has entries
+We should now see:
+- `summarize response.stopReason` **not** equal to `error`
+- `responseParts > 0`
+- `contentTypes` includes `text`
+- `outputChars > 0`
+- `store insertSummary persisted.persistedContentLen > 0`
+- `persistedTokenCount > 0`
+- `lcm_describe` shows non-zero `tokenCount`
+- `lcm_expand(<summary-id>)` returns non-empty summary content
+- `lcm_grep` can find the canary from summary-backed retrieval
 
 ---
 
-## Known Gaps (Don't Go Down These Rabbit Holes)
+## Remaining Caveats / Likely Follow-ups
 
-- **Leaf guard bug (P1):** Known — not fixed yet. Watch for it in debug output
-  (`leaf_summary_created` then immediately `leaf_sweep_stopped_context_not_decreasing`)
-  but don't fix it this session unless it breaks acceptance criteria.
-- **`explore()` only handles .ts/.js and generic:** Other file types get line count + preview.
-  That's expected for v0.3.
-- **No `scripts/` dir on this branch:** The harness scripts existed in a prior working tree
-  context, not committed. They're documented in `docs/testing/` but not present.
+### 1. Empty-summary persistence should still be hardened
+Even with auth fixed, the code should probably refuse to persist summaries when:
+- `stopReason === 'error'`, or
+- no text part exists
+
+That is a separate robustness fix and may still be worth doing.
+
+### 2. Condensation behavior still needs a real retest
+Now that auth should work, re-check whether condensation still has a real logic/guard problem, or whether the earlier evidence was contaminated by empty leaf summaries.
+
+### 3. v0.3 UI/rendering caveat still open
+Large-file interception backend worked in prior testing, but the user-facing read output may still have a separate interception/rendering issue.
 
 ---
 
-## Files to Know
+## Key Files
 
-| File | What |
-|------|------|
-| `src/index.ts` | Extension entry — all event hooks wired here |
-| `src/compaction/engine.ts` | Compaction + condensation + debug events |
-| `src/large-files/interceptor.ts` | tool_result interception for large files |
-| `src/large-files/explorer.ts` | Structural file summary generator |
-| `src/tools/expand.ts` | `lcm_expand` — handles both summary IDs and file IDs |
-| `src/tools/grep.ts` | `lcm_grep` — FTS5 search |
-| `src/tools/describe.ts` | `lcm_describe` — summary metadata |
-| `docs/condensation-validation-analysis.md` | Analysis of compaction validation from last session |
-| `docs/testing/real-world-testing-process.md` | Full real-world testing process doc |
+```text
+src/index.ts                      — extension entry point
+src/config.ts                     — DEFAULT_CONFIG, loadConfig
+src/compaction/engine.ts          — runCompaction (leaf + condensation loops)
+src/context/context-builder.ts    — buildContext
+src/store/sqlite-store.ts         — SQLite DAG store + FTS5 + large file metadata
+src/summarizer/summarizer.ts      — PiSummarizer + auth fix + debug logging
+scripts/inspect-live-db.ts        — DB health inspector
+TESTING.md                        — real-world test workflow
+```
 
 ---
 
 ## Config Reference
 
-```json
-{
-  "freshTailCount": 32,
-  "leafChunkTokens": 20000,
-  "leafTargetTokens": 1200,
-  "condensedTargetTokens": 2000,
-  "condensedMinFanout": 4,
-  "largeFileTokenThreshold": 25000,
-  "maxExpandTokens": 4000,
-  "summaryModel": "anthropic/claude-haiku-4-5"
-}
-```
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| freshTailCount | 32 | Messages kept at full resolution |
+| contextThreshold | 0.75 | Context % triggering compaction |
+| leafChunkTokens | 20000 | Max tokens per leaf chunk |
+| leafTargetTokens | 1200 | Target tokens for leaf summaries |
+| condensedTargetTokens | 2000 | Target tokens for condensed summaries |
+| condensedMinFanout | 4 | Min children before condensation |
+| incrementalMaxDepth | -1 | Max DAG depth (-1 = unlimited) |
+| summaryModel | anthropic/claude-haiku-4-5 | Model for summarization |
+| maxExpandTokens | 4000 | Token budget per lcm_expand call |
 
-Config file: `~/.pi/agent/extensions/pi-lcm.config.json`  
-Enable debug: `PI_LCM_DEBUG=1` env var
+Config path: `~/.pi/agent/extensions/pi-lcm.config.json`

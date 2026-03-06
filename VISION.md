@@ -56,7 +56,7 @@ Key properties:
 - **Hierarchical** — Summaries of summaries. Leaf nodes (depth 0) preserve operational detail. Condensed nodes (depth 1–3+) compress progressively toward durable decisions and lessons learned.
 - **Three-level escalation** — Detail-preserving → aggressive → deterministic truncation. Always converges. Never hangs.
 - **Depth-aware prompting** — Different prompt strategies per depth tier. A depth-3 summary doesn't try to preserve tool call order — it captures the decision that matters three months from now.
-- **Cheap** — Summarization uses Gemini Flash or Haiku. The conversation model is never billed for context maintenance.
+- **Cheap** — Summarization uses Claude Haiku 4.5. The conversation model is never billed for context maintenance.
 
 ---
 

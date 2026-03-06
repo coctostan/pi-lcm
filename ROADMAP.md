@@ -69,7 +69,7 @@ The zero-cost continuity invariant must hold at every milestone: a user who inst
 
 **SQLite DAG:** Summary nodes with parent-child relationships. Leaf nodes (depth 0) cover ≤ `leafChunkTokens` of raw messages. Condensed nodes (depth 1+) cover ≤ `condensedMinFanout` summary nodes.
 
-**Proactive compaction:** After each turn (`agent_end`), automatically generate leaf summaries for eligible message spans using `google/gemini-2.5-flash`. Cascade condensation when fanout thresholds are met.
+**Proactive compaction:** After each turn (`agent_end`), automatically generate leaf summaries for eligible message spans using `anthropic/claude-haiku-4-5`. Cascade condensation when fanout thresholds are met.
 
 **Three-level escalation:** Guaranteed convergence regardless of content.
 
@@ -183,7 +183,7 @@ Richer status widget via `ctx.ui.setWidget()`:
 │ [████████████░░░░░░░░] 62%  (124K / 200K tok) │
 │ 8 summaries: d0×5  d1×2  d2×1                 │
 │ Fresh tail: 32 msgs  Last compaction: 2 min ago│
-│ Cost so far: ~$0.004 (Gemini Flash)            │
+│ Cost so far: ~$0.004 (Claude Haiku 4.5)            │
 └───────────────────────────────────────────────┘
 ```
 
@@ -222,7 +222,7 @@ If pi's extension API supports spawning subagents: implement `lcm_expand_query` 
 Users installing `pi-lcm` on an existing long session need a backfill path:
 
 - `session_start` detects: existing session > freshTailCount turns, no LCM history
-- Offers lazy backfill: "Detected 120-turn session with no LCM index. Backfill? (This will cost ~$0.02 in Gemini Flash calls)"
+- Offers lazy backfill: "Detected 120-turn session with no LCM index. Backfill? (This will cost ~$0.02 in Claude Haiku 4.5 calls)"
 - If accepted: processes session in background, builds full DAG from JSONL
 
 **Effort:** 2 days
@@ -250,7 +250,7 @@ Users installing `pi-lcm` on an existing long session need a backfill path:
 | Summarization latency > 5s on slow connections | Medium | UX friction between turns | Fire async in `agent_end`, not blocking; show "compacting..." in status bar |
 | SQLite corruption on crash | Low | Loss of DAG (not session data) | WAL mode; `appendEntry` as recovery record; lazy rebuild path |
 | Context event correctness: corrupted message list | Low | Model failures | Strict validation before return; integration tests with known-good sessions |
-| Gemini Flash quality on technical summaries | Medium | Missed detail in leaf summaries | Depth-aware prompts calibrated for technical content; Level 2/3 as fallback |
+| Claude Haiku 4.5 quality on technical summaries | Medium | Missed detail in leaf summaries | Depth-aware prompts calibrated for technical content; Level 2/3 as fallback |
 | Pi extension API changes | Low | Compatibility break | Pin to tested pi version; document API surface used |
 | `tool_result` event missing for some tools | Unknown | Large file interception gaps | Test all common file-reading tools; document known gaps |
 
