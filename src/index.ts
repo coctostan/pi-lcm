@@ -22,6 +22,7 @@ import type { CompleteFn, Summarizer } from './summarizer/summarizer.ts';
 import { registerDescribeTool, createDescribeExecute } from './tools/describe.ts';
 import { registerExpandTool, createExpandExecute } from './tools/expand.ts';
 import { registerGrepTool, createGrepExecute } from './tools/grep.ts';
+import { interceptLargeFile } from './large-files/interceptor.ts';
 
 /**
  * pi-lcm extension entry point.
@@ -77,11 +78,12 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
         'Retrieve original content that was stripped from old messages by LCM context management. Use the ID from the LCM placeholder text to recover the full content.',
       parameters: Type.Object({
         id: Type.String({ description: 'The ID from the LCM placeholder (e.g., the tool call ID).' }),
+        offset: Type.Optional(Type.Number({ description: 'Token-based offset for paginated large file retrieval (default: 0).' })),
       }),
       async execute(toolCallId, params, _signal, _onUpdate, _ctx) {
         const currentDagStore = dagReady ? dagStore : undefined;
         const exec = createExpandExecute(store, { maxExpandTokens: resolvedConfig.maxExpandTokens }, currentDagStore);
-        return exec(toolCallId, params);
+        return exec(toolCallId, params as { id: string; offset?: number });
       },
     });
 
@@ -232,7 +234,20 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
     }
   });
 
-  pi.on('tool_result', async (_event, _ctx) => {});
+  const largeFileCacheDir = join(homedir(), '.pi', 'agent', 'lcm-files');
+  pi.on('tool_result', async (event, _ctx) => {
+    if (!dagStore) return undefined;
+    const result = await interceptLargeFile(
+      event as any,
+      dagStore,
+      {
+        largeFileTokenThreshold: resolvedConfig.largeFileTokenThreshold,
+        maxExpandTokens: resolvedConfig.maxExpandTokens,
+      },
+      largeFileCacheDir,
+    );
+    return result;
+  });
   pi.on('session_before_compact', async (event, _ctx) => {
     if (!dagStore) return undefined;
     try {

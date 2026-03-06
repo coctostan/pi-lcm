@@ -1,9 +1,10 @@
 import type { TextContent } from '@mariozechner/pi-ai';
 import type { AgentToolResult, ExtensionAPI } from '@mariozechner/pi-coding-agent';
+import { readFileSync, statSync } from 'node:fs';
 import { Type } from '@sinclair/typebox';
 import type { ContentStore } from '../context/content-store.ts';
-import type { Store } from '../store/types.ts';
-import { ExpandResultSchema } from '../schemas.ts';
+import type { Store, StoredLargeFile } from '../store/types.ts';
+import { ExpandResultSchema, LargeFileExpandResultSchema } from '../schemas.ts';
 import { truncateToTokenBudget } from './truncate.ts';
 
 function textResult(text: string): AgentToolResult<undefined> {
@@ -11,15 +12,94 @@ function textResult(text: string): AgentToolResult<undefined> {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TRUNCATION_NOTICE_RE = /\n\n\[Truncated — content exceeds token budget\. Showing first ~\d+ of ~\d+ estimated tokens\.\]$/;
+function chunkForPagination(text: string, maxTokens: number): string {
+  const charLimit = Math.floor(maxTokens * 3.5);
+  if (text.length <= charLimit) return text;
+  const truncated = truncateToTokenBudget(text, maxTokens);
+  const noticeMatch = truncated.match(TRUNCATION_NOTICE_RE);
+  if (!noticeMatch) return truncated;
 
+  const chunk = truncated.slice(0, -noticeMatch[0].length);
+  if (chunk.length > 0) return chunk;
+  return text.slice(0, Math.max(1, charLimit));
+}
+
+function expandLargeFile(
+  id: string,
+  largeFile: StoredLargeFile,
+  rawOffset: number,
+  maxExpandTokens: number,
+): AgentToolResult<undefined> {
+  // AC 16: clamp negative offset
+  const offset = Math.max(0, rawOffset);
+  const charOffset = Math.floor(offset * 3.5 + 1e-6);
+
+  let fileContent: string;
+  try {
+    fileContent = readFileSync(largeFile.storagePath, 'utf-8');
+  } catch {
+    // AC 17: cache file missing
+    const errorOutput = { error: `Cached file not found at ${largeFile.storagePath}. The file may have been cleaned up.`, id };
+    LargeFileExpandResultSchema.parse(errorOutput);
+    return textResult(JSON.stringify(errorOutput));
+  }
+
+  // AC 15: offset past end
+  if (charOffset >= fileContent.length) {
+    const output = {
+      id,
+      source: 'large_file' as const,
+      content: 'No more content — offset is past end of file.',
+      hasMore: false,
+      totalTokens: largeFile.tokenCount,
+    };
+    LargeFileExpandResultSchema.parse(output);
+    return textResult(JSON.stringify(output));
+  }
+
+  const remaining = fileContent.slice(charOffset);
+  const chunk = chunkForPagination(remaining, maxExpandTokens);
+  const chunkEndCharOffset = charOffset + chunk.length;
+  const hasMore = chunkEndCharOffset < fileContent.length;
+  const nextOffsetTokens = chunkEndCharOffset / 3.5;
+
+  // AC 18: stale detection
+  let stale = false;
+  let staleNote: string | undefined;
+  try {
+    const currentMtime = statSync(largeFile.path).mtimeMs;
+    if (currentMtime !== largeFile.fileMtime) {
+      stale = true;
+      staleNote = 'File has changed since capture — content may be outdated. Re-read the file for fresh content.';
+    }
+  } catch {
+    // File may not exist anymore — not a stale detection concern
+  }
+
+  const output: Record<string, unknown> = {
+    id,
+    source: 'large_file',
+    content: chunk,
+    hasMore,
+    totalTokens: largeFile.tokenCount,
+  };
+  if (hasMore) output.nextOffset = nextOffsetTokens;
+  if (stale) {
+    output.stale = true;
+    output.staleNote = staleNote;
+  }
+
+  LargeFileExpandResultSchema.parse(output);
+  return textResult(JSON.stringify(output));
+}
 export function createExpandExecute(
   store: ContentStore,
   config: { maxExpandTokens: number },
   dagStore?: Store | null,
-): (toolCallId: string, params: { id: string }) => Promise<AgentToolResult<undefined>> {
+): (toolCallId: string, params: { id: string; offset?: number }) => Promise<AgentToolResult<undefined>> {
   const structuredMode = dagStore !== undefined;
-
-  return async (_toolCallId: string, params: { id: string }): Promise<AgentToolResult<undefined>> => {
+  return async (_toolCallId: string, params: { id: string; offset?: number }): Promise<AgentToolResult<undefined>> => {
     try {
       const { id } = params;
 
@@ -35,6 +115,14 @@ export function createExpandExecute(
             const errorOutput = { error: 'Summary not found', id };
             ExpandResultSchema.parse(errorOutput);
             return textResult(JSON.stringify(errorOutput));
+          }
+        }
+
+        // AC 22: Large-file IDs take priority over session/dag paths
+        if (dagStore) {
+          const largeFile = dagStore.getLargeFile(id);
+          if (largeFile) {
+            return expandLargeFile(id, largeFile, params.offset ?? 0, config.maxExpandTokens);
           }
         }
 
@@ -146,9 +234,10 @@ export function registerExpandTool(
       'Retrieve original content that was stripped from old messages by LCM context management. Use the ID from the LCM placeholder text to recover the full content.',
     parameters: Type.Object({
       id: Type.String({ description: 'The ID from the LCM placeholder (e.g., the tool call ID).' }),
+      offset: Type.Optional(Type.Number({ description: 'Token-based offset for paginated large file retrieval (default: 0).' })),
     }),
     async execute(toolCallId, params, _signal, _onUpdate, _ctx) {
-      return execute(toolCallId, params);
+      return execute(toolCallId, params as { id: string; offset?: number });
     },
   });
 }
