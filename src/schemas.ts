@@ -61,3 +61,22 @@ const ExpandErrorSchema = z.object({
 export const ExpandResultSchema = z.union([ExpandSuccessSchema, ExpandErrorSchema]);
 
 export type ExpandResult = z.infer<typeof ExpandResultSchema>;
+
+const LargeFileExpandSuccessSchema = z.object({
+  id: z.string(),
+  source: z.literal('large_file'),
+  content: z.string(),
+  hasMore: z.boolean(),
+  nextOffset: z.number().optional(),
+  totalTokens: z.number(),
+  stale: z.boolean().optional(),
+  staleNote: z.string().optional(),
+});
+
+const LargeFileExpandErrorSchema = z.object({
+  error: z.string(),
+  id: z.string(),
+});
+
+export const LargeFileExpandResultSchema = z.union([LargeFileExpandSuccessSchema, LargeFileExpandErrorSchema]);
+export type LargeFileExpandResult = z.infer<typeof LargeFileExpandResultSchema>;
