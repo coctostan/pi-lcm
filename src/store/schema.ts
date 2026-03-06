@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 'v0.2-foundation-1';
+export const SCHEMA_VERSION = 'v0.3-large-files-1';
 
 export const SCHEMA_SQL = `
 -- schema version marker

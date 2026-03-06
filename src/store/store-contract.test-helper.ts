@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Store } from './types.ts';
+import type { Store, LargeFileInsert } from './types.ts';
 import { StoreClosedError } from './types.ts';
 import { estimateTokens } from '../summarizer/token-estimator.ts';
 
@@ -224,6 +224,116 @@ export function runStoreContractTests(name: string, factory: () => Store) {
       assert.deepStrictEqual(ids, [`message:m0`, `summary:${sid}`].sort());
 
       store.close();
+    });
+
+    it('insertLargeFile/getLargeFile roundtrip preserves all fields; returns undefined for unknown id', () => {
+      const store = factory();
+      store.openConversation('sess_1', '/tmp/project');
+
+      const input: LargeFileInsert = {
+        path: '/src/big-file.ts',
+        explorationSummary: 'Module with 50 exports...',
+        tokenCount: 25000,
+        storagePath: '/home/user/.pi/agent/lcm-files/abc123',
+        capturedAt: 1700000000,
+        fileMtime: 1699999000,
+      };
+
+      const fileId = store.insertLargeFile(input);
+      assert.ok(typeof fileId === 'string');
+      assert.ok(fileId.length > 0);
+
+      const stored = store.getLargeFile(fileId);
+      assert.ok(stored);
+      assert.strictEqual(stored.fileId, fileId);
+      assert.strictEqual(stored.path, input.path);
+      assert.strictEqual(stored.explorationSummary, input.explorationSummary);
+      assert.strictEqual(stored.tokenCount, input.tokenCount);
+      assert.strictEqual(stored.storagePath, input.storagePath);
+      assert.strictEqual(stored.capturedAt, input.capturedAt);
+      assert.strictEqual(stored.fileMtime, input.fileMtime);
+      assert.ok(typeof stored.conversationId === 'string');
+
+      assert.strictEqual(store.getLargeFile('nonexistent-id'), undefined);
+
+      store.close();
+    });
+
+    it('getLargeFileByPath returns correct entry for known path; undefined for unknown path', () => {
+      const store = factory();
+      store.openConversation('sess_1', '/tmp/project');
+
+      const fileId = store.insertLargeFile({
+        path: '/src/big-file.ts',
+        explorationSummary: 'Module with 50 exports...',
+        tokenCount: 25000,
+        storagePath: '/home/user/.pi/agent/lcm-files/abc123',
+        capturedAt: 1700000000,
+        fileMtime: 1699999000,
+      });
+
+      const found = store.getLargeFileByPath('/src/big-file.ts');
+      assert.ok(found);
+      assert.strictEqual(found.fileId, fileId);
+      assert.strictEqual(found.path, '/src/big-file.ts');
+
+      assert.strictEqual(store.getLargeFileByPath('/nonexistent/path.ts'), undefined);
+
+      store.close();
+    });
+
+    it('deleteLargeFile removes the entry; getLargeFile returns undefined after', () => {
+      const store = factory();
+      store.openConversation('sess_1', '/tmp/project');
+
+      const fileId = store.insertLargeFile({
+        path: '/src/big-file.ts',
+        explorationSummary: 'Module with 50 exports...',
+        tokenCount: 25000,
+        storagePath: '/home/user/.pi/agent/lcm-files/abc123',
+        capturedAt: 1700000000,
+        fileMtime: 1699999000,
+      });
+
+      assert.ok(store.getLargeFile(fileId));
+
+      store.deleteLargeFile(fileId);
+
+      assert.strictEqual(store.getLargeFile(fileId), undefined);
+
+      store.close();
+    });
+
+    it('large file methods throw StoreClosedError after close()', () => {
+      const store = factory();
+      store.openConversation('sess_1', '/tmp/project');
+      store.close();
+
+      const input: LargeFileInsert = {
+        path: '/src/big-file.ts',
+        explorationSummary: 'Module...',
+        tokenCount: 25000,
+        storagePath: '/tmp/lcm-files/abc',
+        capturedAt: 1700000000,
+        fileMtime: 1699999000,
+      };
+
+      assert.throws(() => store.insertLargeFile(input), (err: any) => {
+        assert.ok(err instanceof StoreClosedError);
+        return true;
+      });
+      assert.throws(() => store.getLargeFile('any-id'), (err: any) => {
+        assert.ok(err instanceof StoreClosedError);
+        return true;
+      });
+      assert.throws(() => store.getLargeFileByPath('/any/path'), (err: any) => {
+        assert.ok(err instanceof StoreClosedError);
+        return true;
+      });
+      assert.throws(() => store.deleteLargeFile('any-id'), (err: any) => {
+        assert.ok(err instanceof StoreClosedError);
+        return true;
+      });
     });
   });
 }

@@ -54,6 +54,20 @@ export interface SummaryMeta {
   createdAt: number;
 }
 
+export interface LargeFileInsert {
+  path: string;
+  explorationSummary: string;
+  tokenCount: number;
+  storagePath: string;
+  capturedAt: number;
+  fileMtime: number;
+}
+
+export interface StoredLargeFile extends LargeFileInsert {
+  fileId: string;
+  conversationId: string;
+}
+
 export class StoreClosedError extends Error {
   constructor(message: string = 'Store is closed') {
     super(message);
@@ -87,6 +101,11 @@ export interface Store {
   describeSummary(summaryId: string): SummaryMeta;
   getSummaryChildIds(parentId: string): string[];
 
+  // Large file cache
+  insertLargeFile(file: LargeFileInsert): string;
+  getLargeFile(fileId: string): StoredLargeFile | undefined;
+  getLargeFileByPath(path: string): StoredLargeFile | undefined;
+  deleteLargeFile(fileId: string): void;
   // Cleanup
   close(): void;
 }

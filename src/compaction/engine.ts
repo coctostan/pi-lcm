@@ -252,7 +252,7 @@ export async function runCompaction(
     const childIds = chunk.map(item => item.summaryId);
       const children = childIds
         .map(id => store.getSummary(id))
-      .filter(Boolean);
+        .filter((s): s is NonNullable<typeof s> => s !== undefined);
       if (children.length < config.condensedMinFanout) continue;
     const input = children.map(s => s.content).join('\n\n');
       let summaryContent: string;
