@@ -19,14 +19,12 @@ function makeMessages(count: number): AgentMessage[] {
     if (role === 'user') {
       messages.push({
         role: 'user',
-        id,
         content: `User message ${i}: detailed question about system architecture.`,
         timestamp: i * 1000,
       } as any as AgentMessage);
     } else if (role === 'assistant') {
       messages.push({
         role: 'assistant',
-        id,
         content: [{ type: 'text', text: `Assistant response ${i}: here is a thorough technical answer.` }],
         api: 'anthropic-messages', provider: 'anthropic', model: 'claude-sonnet',
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
@@ -37,7 +35,6 @@ function makeMessages(count: number): AgentMessage[] {
     } else {
       messages.push({
         role: 'toolResult',
-        id,
         toolCallId: id,
         toolName: 'read',
         content: [{ type: 'text', text: `Tool output ${i}: file contents with code and documentation.` }],
@@ -47,6 +44,21 @@ function makeMessages(count: number): AgentMessage[] {
   }
   return messages;
 }
+
+describe('Performance fixtures — real AgentMessage contract', () => {
+  it('makeMessages emits user and assistant messages without synthetic ids', () => {
+    const [user, assistant, toolResult] = makeMessages(3) as any[];
+
+    assert.strictEqual(user.role, 'user');
+    assert.ok(!('id' in user), 'User fixture should not expose synthetic id');
+
+    assert.strictEqual(assistant.role, 'assistant');
+    assert.ok(!('id' in assistant), 'Assistant fixture should not expose synthetic id');
+
+    assert.strictEqual(toolResult.role, 'toolResult');
+    assert.strictEqual(toolResult.toolCallId, 'msg_2');
+  });
+});
 
 describe('Performance — buildContext', () => {
   it('100 messages with no summaries in store completes in under 50ms (AC 16)', () => {
@@ -58,7 +70,11 @@ describe('Performance — buildContext', () => {
         seq: i,
         role: (i % 3 === 0 ? 'user' : i % 3 === 1 ? 'assistant' : 'toolResult') as any,
         toolName: i % 3 === 2 ? 'read' : undefined,
-        content: `Message content ${i} with padding text for tokens.`,
+        content: i % 3 === 0
+          ? `User message ${i}: detailed question about system architecture.`
+          : i % 3 === 1
+            ? `Assistant response ${i}: here is a thorough technical answer.`
+            : `Tool output ${i}: file contents with code and documentation.`,
         tokenCount: 20,
         createdAt: i * 1000,
       });
@@ -99,7 +115,11 @@ describe('Performance — buildContext', () => {
         seq: i,
         role: (i % 3 === 0 ? 'user' : i % 3 === 1 ? 'assistant' : 'toolResult') as any,
         toolName: i % 3 === 2 ? 'read' : undefined,
-        content: `Message content ${i} with some padding text.`,
+        content: i % 3 === 0
+          ? `User message ${i}: detailed question about system architecture.`
+          : i % 3 === 1
+            ? `Assistant response ${i}: here is a thorough technical answer.`
+            : `Tool output ${i}: file contents with code and documentation.`,
         tokenCount: 20,
         createdAt: i * 1000,
       });
@@ -151,8 +171,8 @@ describe('Performance — buildContext', () => {
     assert.strictEqual(result.stats.maxDepth, 0);
     assert.strictEqual(result.messages.length, 30); // 10 summaries + 20 raw messages
 
-    const tailIds = new Set(Array.from({ length: 20 }, (_, i) => `msg_${80 + i}`));
-    const tailInOutput = result.messages.filter((m: any) => tailIds.has(m.toolCallId ?? m.id));
+    const expectedTail = messages.slice(80);
+    const tailInOutput = expectedTail.filter(message => result.messages.includes(message));
     assert.strictEqual(tailInOutput.length, 20);
     store.close();
   });
