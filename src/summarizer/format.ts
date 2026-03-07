@@ -2,13 +2,15 @@ import type { StoredMessage } from '../store/types.ts';
 
 /**
  * Format stored messages into a string suitable for summarization prompts.
- * Each message is serialized as [role]\n<content>, separated by double newlines.
+ * Each message is serialized as [role]\n<content>, separated by double newlines,
+ * then wrapped in explicit transcript delimiters so the model treats the input
+ * as data to summarize rather than a conversation to continue.
  * Tool output is included in full (no truncation) for FTS coverage.
  */
 export function formatMessagesForSummary(messages: StoredMessage[]): string {
   if (messages.length === 0) return '';
 
-  return messages
+  const body = messages
     .map((msg) => {
       switch (msg.role) {
         case 'user':
@@ -20,4 +22,6 @@ export function formatMessagesForSummary(messages: StoredMessage[]): string {
       }
     })
     .join('\n\n');
+
+  return `<conversation_to_summarize>\n${body}\n</conversation_to_summarize>`;
 }
