@@ -1,7 +1,53 @@
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { ContextHandler, ContextHandlerResult, ContextHandlerStats } from './context-handler.ts';
-import type { Store } from '../store/types.ts';
+import type { Store, StoredMessage } from '../store/types.ts';
 import type { SummaryBlock } from '../schemas.ts';
+
+function serializeMessageForMatch(message: AgentMessage): string {
+  const candidate = message as any;
+  const { role, content } = candidate;
+
+  if (role === 'user') {
+    if (typeof content === 'string') return content;
+    return (content as any[])
+      .filter((part: any) => part.type === 'text')
+      .map((part: any) => part.text)
+      .join('\n');
+  }
+
+  if (role === 'assistant') {
+    return (content as any[])
+      .map((part: any) => {
+        if (part.type === 'text') return part.text;
+        if (part.type === 'toolCall') return `[toolCall: ${part.name}] ${JSON.stringify(part.arguments)}`;
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  if (role === 'toolResult') {
+    return (content as any[])
+      .filter((part: any) => part.type === 'text')
+      .map((part: any) => part.text)
+      .join('\n');
+  }
+
+  return '';
+}
+
+function matchesStoredMessage(message: AgentMessage, stored: StoredMessage): boolean {
+  const candidate = message as any;
+  if (!candidate || candidate.role !== stored.role) return false;
+  if (candidate.timestamp !== stored.createdAt) return false;
+  if (stored.role === 'toolResult' && candidate.toolName !== stored.toolName) return false;
+  return serializeMessageForMatch(message) === stored.content;
+}
+
+function hasDirectMessageId(message: AgentMessage, messageId: string): boolean {
+  const candidate = message as any;
+  return candidate.toolCallId === messageId || ('id' in candidate && candidate.id === messageId);
+}
 
 export class ContextBuilder {
   private handler: ContextHandler;
@@ -24,6 +70,7 @@ export class ContextBuilder {
 
     const inputMessages = messages ?? [];
     const assembled: AgentMessage[] = [];
+    const usedInputIndexes = new Set<number>();
     let strippedCount = 0;
     let summaryCount = 0;
     let maxDepth = 0;
@@ -66,13 +113,27 @@ export class ContextBuilder {
           stopReason: 'stop',
           timestamp: summary.createdAt,
         } as AgentMessage);
-      } else {
-        const original = inputMessages.find(
-          (m: any) => m.toolCallId === item.messageId || ('id' in m && m.id === item.messageId),
-        );
-        if (original) {
-          assembled.push(original);
+        continue;
+      }
+
+      let resolvedIndex = inputMessages.findIndex(
+        (message, index) => !usedInputIndexes.has(index) && hasDirectMessageId(message, item.messageId),
+      );
+
+      if (resolvedIndex < 0) {
+        const stored = this.dagStore.getMessage(item.messageId);
+        if (!stored) {
+          continue;
         }
+
+        resolvedIndex = inputMessages.findIndex(
+          (message, index) => !usedInputIndexes.has(index) && matchesStoredMessage(message, stored),
+        );
+      }
+
+      if (resolvedIndex >= 0) {
+        assembled.push(inputMessages[resolvedIndex]!);
+        usedInputIndexes.add(resolvedIndex);
       }
     }
 
@@ -82,6 +143,15 @@ export class ContextBuilder {
       summaryCount,
       maxDepth: summaryCount > 0 ? maxDepth : undefined,
     };
+
+    // Safety guard: if assembled is empty, the API call would fail with
+    // "messages: at least one message is required". This can happen when
+    // context items reference user/assistant messages that have no toolCallId
+    // or id field in the AgentMessage objects from the context event.
+    // Fall back to the normal handler to ensure we always send valid messages.
+    if (assembled.length === 0) {
+      return this.handler.process(messages);
+    }
 
     return { messages: assembled, stats };
   }

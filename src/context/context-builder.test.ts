@@ -86,6 +86,117 @@ describe('ContextBuilder — with DAG Store', () => {
     assert.strictEqual(parsed.kind, 'leaf');
   });
 
+  it('resolves message-kind context items for real-contract user/assistant messages without synthetic ids', () => {
+    const contentStore = new MemoryContentStore();
+    const strategy = new StripStrategy();
+    const handler = new ContextHandler(strategy, contentStore, { freshTailCount: 32 });
+
+    const dagStore = new MemoryStore();
+    dagStore.openConversation('sess_1', '/tmp/project');
+    dagStore.ingestMessage({
+      id: 'entry_user',
+      seq: 0,
+      role: 'user',
+      content: 'Question from the user.',
+      tokenCount: 4,
+      createdAt: 100,
+    });
+    dagStore.ingestMessage({
+      id: 'entry_assistant',
+      seq: 1,
+      role: 'assistant',
+      content: 'Answer from the assistant.',
+      tokenCount: 5,
+      createdAt: 200,
+    });
+    dagStore.replaceContextItems([
+      { kind: 'message', messageId: 'entry_user' },
+      { kind: 'message', messageId: 'entry_assistant' },
+    ]);
+
+    const builder = new ContextBuilder(handler, dagStore);
+    const messages: AgentMessage[] = [
+      { role: 'user' as const, content: 'Question from the user.', timestamp: 100 } as AgentMessage,
+      {
+        role: 'assistant' as const,
+        content: [{ type: 'text' as const, text: 'Answer from the assistant.' }],
+        api: 'anthropic-messages',
+        provider: 'anthropic',
+        model: 'claude-sonnet',
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        stopReason: 'stop',
+        timestamp: 200,
+      } as AgentMessage,
+    ];
+
+    const result = builder.buildContext(messages);
+    assert.deepStrictEqual(result.messages.map(message => message.role), ['user', 'assistant']);
+    assert.strictEqual(result.messages[0], messages[0]);
+    assert.strictEqual(result.messages[1], messages[1]);
+  });
+
+  it('prefers direct toolCallId matches over metadata fallback for toolResult context items', () => {
+    const contentStore = new MemoryContentStore();
+    const strategy = new StripStrategy();
+    const handler = new ContextHandler(strategy, contentStore, { freshTailCount: 32 });
+
+    const dagStore = new MemoryStore();
+    dagStore.openConversation('sess_1', '/tmp/project');
+    dagStore.ingestMessage({
+      id: 'entry_a',
+      seq: 0,
+      role: 'toolResult',
+      toolName: 'read',
+      content: 'same output',
+      tokenCount: 2,
+      createdAt: 100,
+    });
+    dagStore.ingestMessage({
+      id: 'entry_b',
+      seq: 1,
+      role: 'toolResult',
+      toolName: 'read',
+      content: 'same output',
+      tokenCount: 2,
+      createdAt: 100,
+    });
+    dagStore.replaceContextItems([{ kind: 'message', messageId: 'entry_b' }]);
+
+    const builder = new ContextBuilder(handler, dagStore);
+    const messages: AgentMessage[] = [
+      {
+        role: 'toolResult' as const,
+        toolCallId: 'entry_a',
+        toolName: 'read',
+        content: [{ type: 'text' as const, text: 'same output' }],
+        isError: false,
+        timestamp: 100,
+      } as AgentMessage,
+      {
+        role: 'toolResult' as const,
+        toolCallId: 'entry_b',
+        toolName: 'read',
+        content: [{ type: 'text' as const, text: 'same output' }],
+        isError: false,
+        timestamp: 100,
+      } as AgentMessage,
+    ];
+
+    const result = builder.buildContext(messages);
+    assert.strictEqual(
+      (result.messages[0] as any).toolCallId,
+      'entry_b',
+      'Expected direct toolCallId match to win over metadata fallback',
+    );
+  });
+
   it('resolves message-kind context items to original messages from input (AC 8)', () => {
     const contentStore = new MemoryContentStore();
     const strategy = new StripStrategy();

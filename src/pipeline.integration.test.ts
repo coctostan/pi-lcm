@@ -29,10 +29,9 @@ function makeEntry(
         timestamp: new Date(ts).toISOString(),
         message: { role: 'user', content, timestamp: ts },
       } as SessionEntry,
-      agentMessage: { role: 'user', content, timestamp: ts, id } as any as AgentMessage,
+      agentMessage: { role: 'user', content, timestamp: ts } as any as AgentMessage,
     };
   }
-
   if (role === 'assistant') {
     const text = `Assistant response ${index}: providing technical analysis and code review.`;
     return {
@@ -52,11 +51,10 @@ function makeEntry(
         api: 'anthropic-messages', provider: 'anthropic', model: 'claude-sonnet',
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-        stopReason: 'stop', timestamp: ts, id,
+        stopReason: 'stop', timestamp: ts,
       } as any as AgentMessage,
     };
   }
-
   // toolResult
   const text = `Tool output ${index}: source code with module imports and function definitions padding.`;
   return {
@@ -70,7 +68,7 @@ function makeEntry(
     } as SessionEntry,
     agentMessage: {
       role: 'toolResult', toolCallId: id, toolName: 'read',
-      content: [{ type: 'text', text }], isError: false, timestamp: ts, id,
+      content: [{ type: 'text', text }], isError: false, timestamp: ts,
     } as any as AgentMessage,
   };
 }
@@ -89,6 +87,22 @@ function buildPipelineSession(messageCount: number): {
   }
   return { entries, agentMessages };
 }
+
+describe('Pipeline integration helpers — real AgentMessage contract', () => {
+  it('buildPipelineSession emits user/assistant messages without synthetic ids', () => {
+    const { agentMessages } = buildPipelineSession(3);
+    const [user, assistant, toolResult] = agentMessages as any[];
+
+    assert.strictEqual(user.role, 'user');
+    assert.ok(!('id' in user), 'User message should not expose synthetic id');
+
+    assert.strictEqual(assistant.role, 'assistant');
+    assert.ok(!('id' in assistant), 'Assistant message should not expose synthetic id');
+
+    assert.strictEqual(toolResult.role, 'toolResult');
+    assert.strictEqual(toolResult.toolCallId, 'e_2');
+  });
+});
 
 function createMockSummarizer(): Summarizer {
   return {
@@ -255,10 +269,8 @@ describe('Pipeline integration — medium session ContextBuilder + status bar (A
     }
 
     // AC 11: buildContext output must include the 8 raw fresh-tail messages
-    const freshTailIds = entries.slice(-8).map(e => e.id);
-    const freshTailInOutput = result.messages.filter((m: any) =>
-      freshTailIds.includes(m.toolCallId ?? m.id),
-    );
+    const expectedFreshTail = agentMessages.slice(-8);
+    const freshTailInOutput = expectedFreshTail.filter(message => result.messages.includes(message));
     assert.strictEqual(
       freshTailInOutput.length,
       8,
