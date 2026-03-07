@@ -131,6 +131,7 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
     event.messages = result.messages;
     const text = formatStatusBar(result.stats, ctx.getContextUsage(), resolvedConfig.freshTailCount);
     ctx.ui.setStatus('lcm', text);
+    return { messages: result.messages };
   });
 
   pi.on('session_start', async (_event, ctx) => {

@@ -7,7 +7,7 @@ import { ExpandResultSchema } from './schemas.ts';
 
 describe('src/index.ts — ContextBuilder wiring (AC 24)', () => {
   it('uses ContextBuilder with DAG Store in context event handler', async () => {
-    let capturedContextHandler: ((event: any, ctx: any) => Promise<void>) | null = null;
+    let capturedContextHandler: ((event: any, ctx: any) => Promise<any>) | null = null;
 
     const mockPi = {
       on(event: string, handler: any) {
@@ -44,18 +44,22 @@ describe('src/index.ts — ContextBuilder wiring (AC 24)', () => {
         return undefined;
       },
     } as any;
-    await (capturedContextHandler as (event: any, ctx: any) => Promise<void>)(event, ctx);
+    const handlerResult = await capturedContextHandler!(event, ctx);
 
-    const summaryMsg = event.messages.find(
+    // Pi uses the RETURN VALUE, not event.messages mutation
+    assert.ok(handlerResult, 'Handler must return a ContextEventResult');
+    assert.ok(handlerResult.messages, 'Return value must include messages');
+
+    const summaryMsg = handlerResult.messages.find(
       (m: any) => m.role === 'assistant' && Array.isArray(m.content) && m.content[0]?.type === 'text',
     );
-    assert.ok(summaryMsg, 'Expected assistant summary message');
+    assert.ok(summaryMsg, 'Expected assistant summary message in return value');
     const parsed = JSON.parse((summaryMsg as any).content[0].text);
     assert.strictEqual(parsed.id, summaryId);
   });
 
   it('falls back to Phase 1 behavior when no DAG Store', async () => {
-    let capturedContextHandler: ((event: any, ctx: any) => Promise<void>) | null = null;
+    let capturedContextHandler: ((event: any, ctx: any) => Promise<any>) | null = null;
 
     const mockPi = {
       on(event: string, handler: any) {
@@ -78,10 +82,13 @@ describe('src/index.ts — ContextBuilder wiring (AC 24)', () => {
     } as any;
 
     assert.ok(capturedContextHandler !== null, 'context handler was registered');
-    await (capturedContextHandler as (event: any, ctx: any) => Promise<void>)(event, ctx);
+    const handlerResult = await capturedContextHandler!(event, ctx);
 
-    assert.strictEqual(event.messages.length, 1);
-    assert.strictEqual((event.messages[0] as any).content, 'hello');
+    // Pi uses the RETURN VALUE, not event.messages mutation
+    assert.ok(handlerResult, 'Handler must return a ContextEventResult');
+    assert.ok(handlerResult.messages, 'Return value must include messages');
+    assert.strictEqual(handlerResult.messages.length, 1);
+    assert.strictEqual((handlerResult.messages[0] as any).content, 'hello');
   });
 });
 
