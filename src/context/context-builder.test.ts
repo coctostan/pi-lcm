@@ -6,7 +6,7 @@ import { ContextHandler } from './context-handler.ts';
 import { StripStrategy } from './strip-strategy.ts';
 import { MemoryContentStore } from './content-store.ts';
 import { MemoryStore } from '../store/memory-store.ts';
-import { SummaryBlockSchema } from '../schemas.ts';
+
 
 describe('ContextBuilder — no DAG Store', () => {
   it('delegates to ContextHandler.process() and returns its result unchanged', () => {
@@ -42,14 +42,12 @@ describe('ContextBuilder — no DAG Store', () => {
 
 
 describe('ContextBuilder — with DAG Store', () => {
-  it('injects summary blocks as assistant messages containing valid SummaryBlock JSON (AC 7)', () => {
+  it('injects framed summaries as user context text (AC 5)', () => {
     const contentStore = new MemoryContentStore();
     const strategy = new StripStrategy();
     const handler = new ContextHandler(strategy, contentStore, { freshTailCount: 32 });
-
     const dagStore = new MemoryStore();
     dagStore.openConversation('sess_1', '/tmp/project');
-
     const summaryId = dagStore.insertSummary({
       depth: 0,
       kind: 'leaf',
@@ -62,28 +60,23 @@ describe('ContextBuilder — with DAG Store', () => {
     });
 
     dagStore.replaceContextItems([{ kind: 'summary', summaryId }]);
-
     const builder = new ContextBuilder(handler, dagStore);
     const result = builder.buildContext([
       { role: 'user' as const, content: 'latest message', timestamp: 1000 } as AgentMessage,
     ]);
-
-    const summaryMsg = result.messages.find((m: any) => {
-      if (m.role !== 'assistant' || !Array.isArray(m.content)) return false;
-      const first = m.content[0];
-      if (!first || first.type !== 'text') return false;
-      try {
-        return SummaryBlockSchema.safeParse(JSON.parse(first.text)).success;
-      } catch {
-        return false;
-      }
-    });
-
-    assert.ok(summaryMsg, 'Should contain an assistant message with valid SummaryBlock JSON');
-    const parsed = JSON.parse((summaryMsg as any).content[0].text);
-    assert.strictEqual(parsed.id, summaryId);
-    assert.strictEqual(parsed.depth, 0);
-    assert.strictEqual(parsed.kind, 'leaf');
+    const summaryMsg = result.messages[0] as any;
+    assert.strictEqual(result.messages.length, 1);
+    assert.strictEqual(summaryMsg.role, 'user');
+    const summaryText = typeof summaryMsg.content === 'string'
+      ? summaryMsg.content
+      : Array.isArray(summaryMsg.content)
+        ? summaryMsg.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
+        : '';
+    assert.ok(summaryText.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
+    assert.ok(summaryText.includes('Summary 1: Messages 1-5: user discussed config setup.'));
+    assert.ok(!summaryText.includes('Current user message:'));
+    assert.ok(!summaryText.includes('"id"'));
+    assert.ok(!summaryText.includes('"msgRange"'));
   });
 
   it('resolves message-kind context items for real-contract user/assistant messages without synthetic ids', () => {
@@ -281,9 +274,19 @@ describe('ContextBuilder — with DAG Store', () => {
 
     const result = builder.buildContext(messages);
     assert.strictEqual(result.messages.length, 2);
-    assert.strictEqual((result.messages[0] as any).role, 'assistant');
-    const parsed = JSON.parse((result.messages[0] as any).content[0].text);
-    assert.strictEqual(parsed.id, summaryId);
+    assert.strictEqual((result.messages[0] as any).role, 'user');
+
+    const summaryText = typeof (result.messages[0] as any).content === 'string'
+      ? (result.messages[0] as any).content
+      : Array.isArray((result.messages[0] as any).content)
+        ? (result.messages[0] as any).content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
+        : '';
+
+    assert.ok(summaryText.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
+    assert.ok(summaryText.includes('Summary 1: Summary one.'));
+    assert.ok(!summaryText.includes('"id"'));
+    assert.ok(!summaryText.includes('"msgRange"'));
+    assert.strictEqual(result.messages[1], messages[0]);
     assert.ok(
       !result.messages.some((m: any) => m.role === 'user' && m.content === 'UNREFERENCED OLD'),
       'Unreferenced old messages must not be appended',
@@ -319,8 +322,21 @@ describe('ContextBuilder — with DAG Store', () => {
       { role: 'user' as const, content: 'hi', timestamp: 1 } as AgentMessage,
     ]);
 
-    const summaryAssistantMessages = result.messages.filter((m: any) => m.role === 'assistant');
-    assert.strictEqual(summaryAssistantMessages.length, 1);
+    const framedSummaries = result.messages.filter((m: any) => {
+      const text = typeof m.content === 'string'
+        ? m.content
+        : Array.isArray(m.content)
+          ? m.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
+          : '';
+      return m.role === 'user' && text.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]');
+    });
+    assert.strictEqual(framedSummaries.length, 1);
+    const firstText = typeof (framedSummaries[0] as any).content === 'string'
+      ? (framedSummaries[0] as any).content
+      : '';
+    assert.ok(firstText.includes('Summary 1: Valid summary.'));
+    assert.ok(!firstText.includes('"id"'));
+    assert.ok(!firstText.includes('"msgRange"'));
   });
 
   it('returns ContextHandlerResult with stats including strippedCount and estimatedTokensSaved (AC 11)', () => {

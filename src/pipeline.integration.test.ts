@@ -248,18 +248,32 @@ describe('Pipeline integration — medium session ContextBuilder + status bar (A
     const builder = createBuilder(store);
     const result = builder.buildContext(agentMessages);
 
-    // Should contain at least one summary-injected assistant message
+    // Should contain at least one framed summary user message
     const summaryMessages = result.messages.filter((m: any) => {
-      if (m.role !== 'assistant' || !Array.isArray(m.content)) return false;
-      const first = m.content[0];
-      if (!first || first.type !== 'text') return false;
-      try {
-        const parsed = JSON.parse(first.text);
-        return parsed.kind === 'leaf' && typeof parsed.depth === 'number';
-      } catch { return false; }
+      const text = typeof m.content === 'string'
+        ? m.content
+        : Array.isArray(m.content)
+          ? m.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
+          : '';
+
+      return m.role === 'user' && text.includes('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]');
     });
-    assert.ok(summaryMessages.length >= 1,
-      `Expected at least 1 summary-injected assistant message, got ${summaryMessages.length}`);
+
+    assert.ok(
+      summaryMessages.length >= 1,
+      `Expected at least 1 framed summary user message, got ${summaryMessages.length}`,
+    );
+
+    const firstSummaryText = typeof (summaryMessages[0] as any).content === 'string'
+      ? (summaryMessages[0] as any).content
+      : '';
+    assert.ok(firstSummaryText.includes('Summary 1:'), 'Framed summary should include numbered summary lines');
+    assert.ok(!firstSummaryText.includes('"id"'));
+    assert.ok(!firstSummaryText.includes('"msgRange"'));
+    const roles = result.messages.map(m => m.role);
+    for (let i = 1; i < roles.length; i++) {
+      assert.notStrictEqual(roles[i], roles[i - 1]);
+    }
 
     // Should contain raw message items for the fresh tail in store state
     const contextItems = store.getContextItems();
@@ -268,13 +282,14 @@ describe('Pipeline integration — medium session ContextBuilder + status bar (A
       assert.strictEqual(item.kind, 'message');
     }
 
-    // AC 11: buildContext output must include the 8 raw fresh-tail messages
+    // AC 11: buildContext output must include the 8 raw fresh-tail messages.
+    // Note: if the first tail message is user, it gets merged into the framed summary context
+    // (new object), so reference equality may not hold for that one message.
     const expectedFreshTail = agentMessages.slice(-8);
     const freshTailInOutput = expectedFreshTail.filter(message => result.messages.includes(message));
-    assert.strictEqual(
-      freshTailInOutput.length,
-      8,
-      `Expected 8 fresh-tail raw messages in buildContext output, got ${freshTailInOutput.length}`,
+    assert.ok(
+      freshTailInOutput.length >= 7,
+      `Expected at least 7 of 8 fresh-tail messages by reference in output (one user may be merged into summary context), got ${freshTailInOutput.length}`,
     );
 
     // summaryCount should match number of summary items

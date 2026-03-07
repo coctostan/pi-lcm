@@ -1,7 +1,6 @@
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { ContextHandler, ContextHandlerResult, ContextHandlerStats } from './context-handler.ts';
 import type { Store, StoredMessage } from '../store/types.ts';
-import type { SummaryBlock } from '../schemas.ts';
 
 function serializeMessageForMatch(message: AgentMessage): string {
   const candidate = message as any;
@@ -49,6 +48,34 @@ function hasDirectMessageId(message: AgentMessage, messageId: string): boolean {
   return candidate.toolCallId === messageId || ('id' in candidate && candidate.id === messageId);
 }
 
+function formatSummaryContext(summaryContents: string[]): string {
+  return `[LCM Context Summary — this summarizes earlier parts of the conversation]\n\n` +
+    summaryContents.map((c, i) => `Summary ${i + 1}: ${c}`).join('\n\n');
+}
+
+function mergeSummaryIntoUserMessage(summaryText: string, message: AgentMessage): AgentMessage {
+  const candidate = message as any;
+
+  if (typeof candidate.content === 'string') {
+    return {
+      ...candidate,
+      content: `${summaryText}\n\nCurrent user message: ${candidate.content}`,
+    } as AgentMessage;
+  }
+
+  if (Array.isArray(candidate.content)) {
+    return {
+      ...candidate,
+      content: [{ type: 'text', text: summaryText }, ...candidate.content],
+    } as AgentMessage;
+  }
+
+  return {
+    ...candidate,
+    content: summaryText,
+  } as AgentMessage;
+}
+
 export class ContextBuilder {
   private handler: ContextHandler;
   private dagStore: Store | null;
@@ -74,6 +101,7 @@ export class ContextBuilder {
     let strippedCount = 0;
     let summaryCount = 0;
     let maxDepth = 0;
+    const summaryContents: string[] = [];
 
     for (const item of contextItems) {
       if (item.kind === 'summary') {
@@ -81,38 +109,12 @@ export class ContextBuilder {
         if (!summary) {
           continue;
         }
-
         summaryCount++;
         if (summary.depth > maxDepth) {
           maxDepth = summary.depth;
         }
 
-        const block: SummaryBlock = {
-          id: summary.summaryId,
-          depth: summary.depth,
-          kind: summary.kind,
-          msgRange: { earliest: summary.earliestAt, latest: summary.latestAt },
-          childCount: summary.descendantCount,
-          content: summary.content,
-        };
-
-        assembled.push({
-          role: 'assistant',
-          content: [{ type: 'text', text: JSON.stringify(block) }],
-          api: 'anthropic-messages',
-          provider: 'anthropic',
-          model: 'lcm-context',
-          usage: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            totalTokens: 0,
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-          },
-          stopReason: 'stop',
-          timestamp: summary.createdAt,
-        } as AgentMessage);
+        summaryContents.push(summary.content);
         continue;
       }
 
@@ -134,6 +136,17 @@ export class ContextBuilder {
       if (resolvedIndex >= 0) {
         assembled.push(inputMessages[resolvedIndex]!);
         usedInputIndexes.add(resolvedIndex);
+      }
+    }
+
+    // Present summaries as user-provided context so the model reads them as prior conversation state.
+    if (summaryContents.length > 0) {
+      const summaryText = formatSummaryContext(summaryContents);
+
+      if (assembled[0]?.role === 'user') {
+        assembled[0] = mergeSummaryIntoUserMessage(summaryText, assembled[0]!);
+      } else {
+        assembled.unshift({ role: 'user', content: summaryText, timestamp: 0 } as AgentMessage);
       }
     }
 

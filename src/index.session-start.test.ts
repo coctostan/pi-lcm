@@ -99,12 +99,17 @@ describe('session_start handler', () => {
     store.replaceContextItems([{ kind: 'summary', summaryId }]);
 
     const contextEvent = { messages: [] as any[] };
-    await ref.contextHandler!(contextEvent, mockCtx);
+    const contextResult = await ref.contextHandler!(contextEvent, mockCtx);
 
-    assert.strictEqual(contextEvent.messages.length, 1, 'ContextBuilder should use dagStore-backed context_items');
-    const block = JSON.parse((contextEvent.messages[0] as any).content[0].text);
-    assert.strictEqual(block.id, summaryId);
-    assert.strictEqual(block.content, 'post-start summary');
+    assert.ok(contextResult, 'Context handler must return a ContextEventResult');
+    assert.ok(Array.isArray(contextResult.messages), 'Context handler return must include messages array');
+    assert.strictEqual(contextResult.messages.length, 1, 'ContextBuilder should use dagStore-backed context_items');
+
+    const summaryMessage = contextResult.messages[0] as any;
+    assert.strictEqual(summaryMessage.role, 'user');
+    assert.ok(typeof summaryMessage.content === 'string');
+    assert.ok(summaryMessage.content.includes('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
+    assert.ok(summaryMessage.content.includes('Summary 1: post-start summary'));
 
     store.close();
   });
