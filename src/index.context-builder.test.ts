@@ -44,7 +44,8 @@ describe('src/index.ts — ContextBuilder wiring (AC 24)', () => {
         return undefined;
       },
     } as any;
-    const handlerResult = await capturedContextHandler!(event, ctx);
+    const handler = capturedContextHandler as unknown as (event: any, ctx: any) => Promise<any>;
+    const handlerResult = await handler(event, ctx);
 
     // Pi uses the RETURN VALUE, not event.messages mutation
     assert.ok(handlerResult, 'Handler must return a ContextEventResult');
@@ -82,7 +83,8 @@ describe('src/index.ts — ContextBuilder wiring (AC 24)', () => {
     } as any;
 
     assert.ok(capturedContextHandler !== null, 'context handler was registered');
-    const handlerResult = await capturedContextHandler!(event, ctx);
+    const handler = capturedContextHandler as unknown as (event: any, ctx: any) => Promise<any>;
+    const handlerResult = await handler(event, ctx);
 
     // Pi uses the RETURN VALUE, not event.messages mutation
     assert.ok(handlerResult, 'Handler must return a ContextEventResult');

@@ -49,7 +49,8 @@ describe('src/index.ts wiring (AC 15)', () => {
         return undefined;
       },
     } as any;
-    const handlerResult = await capturedContextHandler!(event, ctx);
+    const handler = capturedContextHandler as unknown as (event: any, ctx: any) => Promise<any>;
+    const handlerResult = await handler(event, ctx);
 
     // Pi uses the RETURN VALUE to get modified messages
     assert.ok(handlerResult, 'Handler must return a ContextEventResult');
