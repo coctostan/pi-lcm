@@ -124,15 +124,23 @@ describe('Bug #026 — ContextBuilder drops user/assistant context_items without
 
     const result = createBuilder(store).buildContext(eventMessages);
     const summaryMessage = result.messages[0] as any;
-    assert.strictEqual(summaryMessage.role, 'assistant');
-    const parsedSummary = JSON.parse(summaryMessage.content[0].text);
-    assert.strictEqual(parsedSummary.id, summaryId);
-    assert.strictEqual(result.messages[1], eventMessages[0]);
-    assert.strictEqual(result.messages[2], eventMessages[1]);
+    assert.strictEqual(summaryMessage.role, 'user');
+    const summaryText = typeof summaryMessage.content === 'string'
+      ? summaryMessage.content
+      : Array.isArray(summaryMessage.content)
+        ? summaryMessage.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
+        : '';
+
+    assert.ok(summaryText.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
+    assert.ok(summaryText.includes('Summary 1: Summary for prior condensed context.'));
+    assert.ok(summaryText.includes('Current user message: User asks for a bug reproduction.'));
+    assert.ok(!summaryText.includes('"id"'));
+    assert.ok(!summaryText.includes('"msgRange"'));
+    assert.strictEqual(result.messages[1], eventMessages[1]);
     assert.deepStrictEqual(
       result.messages.map(message => message.role),
-      ['assistant', 'user', 'assistant'],
-      `Expected summary + referenced user + referenced assistant, got roles: ${result.messages.map(message => message.role).join(', ')}`,
+      ['user', 'assistant'],
+      `Expected framed summary + referenced assistant, got roles: ${result.messages.map(message => message.role).join(', ')}`,
     );
   });
 });

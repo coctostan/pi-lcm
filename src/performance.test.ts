@@ -169,7 +169,7 @@ describe('Performance — buildContext', () => {
     assert.ok(elapsed < 100, `buildContext took ${elapsed.toFixed(2)}ms, expected < 100ms`);
     assert.strictEqual(result.stats.summaryCount, 10);
     assert.strictEqual(result.stats.maxDepth, 0);
-    assert.strictEqual(result.messages.length, 30); // 10 summaries + 20 raw messages
+    assert.strictEqual(result.messages.length, 21); // 1 framed summary user message + 20 raw messages
 
     const expectedTail = messages.slice(80);
     const tailInOutput = expectedTail.filter(message => result.messages.includes(message));

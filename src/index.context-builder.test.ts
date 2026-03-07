@@ -51,12 +51,16 @@ describe('src/index.ts — ContextBuilder wiring (AC 24)', () => {
     assert.ok(handlerResult, 'Handler must return a ContextEventResult');
     assert.ok(handlerResult.messages, 'Return value must include messages');
 
-    const summaryMsg = handlerResult.messages.find(
-      (m: any) => m.role === 'assistant' && Array.isArray(m.content) && m.content[0]?.type === 'text',
-    );
-    assert.ok(summaryMsg, 'Expected assistant summary message in return value');
-    const parsed = JSON.parse((summaryMsg as any).content[0].text);
-    assert.strictEqual(parsed.id, summaryId);
+    const summaryMsg = handlerResult.messages[0] as any;
+    assert.strictEqual(summaryMsg.role, 'user');
+    const summaryText = typeof summaryMsg.content === 'string'
+      ? summaryMsg.content
+      : Array.isArray(summaryMsg.content)
+        ? summaryMsg.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
+        : '';
+
+    assert.ok(summaryText.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
+    assert.ok(summaryText.includes('Summary 1: Summary of early messages about project setup.'));
   });
 
   it('falls back to Phase 1 behavior when no DAG Store', async () => {
