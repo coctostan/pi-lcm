@@ -5,7 +5,7 @@ import extensionSetup from './index.ts';
 
 describe('src/index.ts wiring (AC 15)', () => {
   it('registers lcm_expand tool and shares store with ContextHandler', async () => {
-    let capturedContextHandler: ((event: any, ctx: any) => Promise<void>) | null = null;
+    let capturedContextHandler: ((event: any, ctx: any) => Promise<any>) | null = null;
     let capturedTool: any = null;
 
     const mockPi = {
@@ -49,9 +49,14 @@ describe('src/index.ts wiring (AC 15)', () => {
         return undefined;
       },
     } as any;
-    await (capturedContextHandler as (event: any, ctx: any) => Promise<void>)(event, ctx);
+    const handler = capturedContextHandler as unknown as (event: any, ctx: any) => Promise<any>;
+    const handlerResult = await handler(event, ctx);
 
-    const stripped = (event.messages[0] as any).content[0].text;
+    // Pi uses the RETURN VALUE to get modified messages
+    assert.ok(handlerResult, 'Handler must return a ContextEventResult');
+    assert.ok(handlerResult.messages, 'Return value must include messages');
+
+    const stripped = (handlerResult.messages[0] as any).content[0].text;
     assert.ok(
       stripped.startsWith('[Content stripped by LCM.'),
       `Expected stripped placeholder, got: ${stripped}`
