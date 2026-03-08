@@ -151,4 +151,10 @@ describe('formatStatusBar', () => {
 
     assert.strictEqual(text, '🟢 5 summaries (d0) | tail: 8');
   });
+  it('exports centralized threshold constants for status icon boundaries', async () => {
+    const mod = await import('./status.ts');
+
+    assert.strictEqual(mod.STATUS_GREEN_MAX_PERCENT, 60);
+    assert.strictEqual(mod.STATUS_YELLOW_MAX_PERCENT, 85);
+  });
 });

@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import type { Store } from '../store/types.ts';
 import { explore } from './explorer.ts';
 import { debugLog } from '../debug.ts';
+import { estimateTokens } from '../summarizer/token-estimator.ts';
 
 export interface InterceptConfig {
   largeFileTokenThreshold: number;
@@ -48,7 +49,7 @@ export async function interceptLargeFileWithExplorer(
     }
   }
   const fullText = textParts.join('\n');
-  const estimatedTokens = Math.floor(fullText.length / 3.5);
+  const estimatedTokens = estimateTokens(fullText);
   debugLog('large file inspect', {
     toolName: event.toolName,
     toolCallId: event.toolCallId,

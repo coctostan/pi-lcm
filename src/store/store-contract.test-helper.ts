@@ -226,6 +226,32 @@ export function runStoreContractTests(name: string, factory: () => Store) {
       store.close();
     });
 
+    it('grepMessages(pattern, "regex") throws a stable error for malformed patterns', () => {
+      const store = factory();
+      store.openConversation('sess_1', '/tmp/project');
+
+      store.ingestMessage({
+        id: 'm0',
+        seq: 0,
+        role: 'user',
+        content: 'alpha beta',
+        tokenCount: 2,
+        createdAt: 1,
+      });
+
+      assert.throws(
+        () => store.grepMessages('[invalid', 'regex'),
+        (err: any) => {
+          assert.ok(err instanceof Error);
+          assert.match(err.message, /^Invalid search regex: Invalid regular expression:/);
+          assert.match(err.message, /Unterminated character class/);
+          return true;
+        },
+      );
+
+      store.close();
+    });
+
     it('insertLargeFile/getLargeFile roundtrip preserves all fields; returns undefined for unknown id', () => {
       const store = factory();
       store.openConversation('sess_1', '/tmp/project');

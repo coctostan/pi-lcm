@@ -163,6 +163,8 @@ Before release, all of the following must pass:
 
 - [ ] `npm run build` clean
 - [ ] `npm test` all green
+- [ ] package.json version matches the roadmap milestone being released (current target: `0.3.0`)
+- [ ] Direct runtime dependencies are declared in `package.json` (no transitive-only imports such as `@sinclair/typebox`)
 - [ ] One harness long-session run (≥100 turns or equivalent prompt file)
 - [ ] DB inspector shows `integrity: OK` + `FTS5: YES`
 

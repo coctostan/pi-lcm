@@ -45,6 +45,32 @@ describe('interceptLargeFile', () => {
     assert.strictEqual(result, undefined);
   });
 
+  it('intercepts content when estimateTokens(text) exceeds the threshold even if raw chars/3.5 does not', async () => {
+    const store = new MemoryStore();
+    store.openConversation('test-session', '/tmp');
+    const cacheDir = mkdtempSync(join(tmpdir(), 'lcm-threshold-test-'));
+
+    const borderlineContent = 'a'.repeat(315);
+    const event = {
+      type: 'tool_result' as const,
+      toolName: 'read',
+      toolCallId: 'call_borderline',
+      input: { path: '/project/src/borderline.ts' },
+      content: [{ type: 'text' as const, text: borderlineContent }],
+      isError: false,
+      details: undefined,
+    };
+
+    const result = await interceptLargeFile(event, store, {
+      largeFileTokenThreshold: 100,
+      maxExpandTokens: 4000,
+    }, cacheDir);
+
+    assert.ok(result !== undefined, 'should intercept once conservative estimate exceeds threshold');
+
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
   it('skips ImageContent blocks when estimating tokens', async () => {
     const store = new MemoryStore();
     store.openConversation('test-session', '/tmp');

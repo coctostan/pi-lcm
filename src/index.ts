@@ -23,6 +23,7 @@ import { registerDescribeTool, createDescribeExecute } from './tools/describe.ts
 import { registerExpandTool, createExpandExecute } from './tools/expand.ts';
 import { registerGrepTool, createGrepExecute } from './tools/grep.ts';
 import { interceptLargeFile } from './large-files/interceptor.ts';
+import { sessionLargeFileCacheDir, resetSessionLargeFileCache } from './large-files/cache-dir.ts';
 import { debugLog } from './debug.ts';
 
 /**
@@ -40,6 +41,8 @@ export interface InternalOptions {
   dbDir?: string;
   /** Override complete function for testing the production PiSummarizer path. */
   completeFn?: CompleteFn;
+  /** Override large-file cache root for testing. */
+  largeFileCacheRoot?: string;
 }
 
 export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: InternalOptions): void {
@@ -137,6 +140,8 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
   pi.on('session_start', async (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const branch = ctx.sessionManager.getBranch();
+    resetSessionLargeFileCache(largeFileCacheRoot, sessionId);
+    largeFileCacheDir = sessionLargeFileCacheDir(largeFileCacheRoot, sessionId);
     const runIntegrity = (activeStore: Store) => {
       const warnings = checkIntegrity(activeStore);
       for (const w of warnings) {
@@ -251,7 +256,8 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
     }
   });
 
-  const largeFileCacheDir = join(homedir(), '.pi', 'agent', 'lcm-files');
+  const largeFileCacheRoot = _internal?.largeFileCacheRoot ?? join(homedir(), '.pi', 'agent', 'lcm-files');
+  let largeFileCacheDir = largeFileCacheRoot;
   pi.on('tool_result', async (event, _ctx) => {
     if (!dagStore) return undefined;
     const result = await interceptLargeFile(
@@ -305,7 +311,17 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
     }
   });
   pi.on('session_shutdown', async (_event, _ctx) => {
+    try {
+      const sessionId = _ctx?.sessionManager?.getSessionId?.();
+      if (typeof sessionId === 'string' && sessionId.length > 0) {
+        resetSessionLargeFileCache(largeFileCacheRoot, sessionId);
+      }
+    } catch (err) {
+      console.error('pi-lcm: session_shutdown cache cleanup error', err);
+    }
+
     if (!dagStore) return;
+
     try {
       dagStore.close();
     } catch (err) {
