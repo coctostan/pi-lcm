@@ -310,3 +310,86 @@ describe('production wiring: session_shutdown closes production store (AC 18)', 
     assert.ok(existsSync(join(testDir, 'shutdown-test-session.db')), 'DB file should exist');
   });
 });
+
+it('cleans only the active session cache on session_start and session_shutdown', async () => {
+  const tools: Record<string, any> = {};
+  const handlers: Record<string, any> = {};
+  const testDir = join(tmpdir(), `lcm-cache-lifecycle-test-${process.pid}-${Date.now()}`);
+  const cacheRoot = join(testDir, 'cache-root');
+  const thisSessionCache = join(cacheRoot, 'cache-session');
+  const otherSessionCache = join(cacheRoot, 'other-session');
+
+  const { mkdirSync, writeFileSync } = await import('node:fs');
+  mkdirSync(thisSessionCache, { recursive: true });
+  mkdirSync(otherSessionCache, { recursive: true });
+  writeFileSync(join(thisSessionCache, 'stale.txt'), 'stale', 'utf-8');
+  writeFileSync(join(otherSessionCache, 'keep.txt'), 'keep', 'utf-8');
+
+  const mockPi = {
+    on(event: string, handler: any) {
+      handlers[event] = handler;
+    },
+    registerTool(tool: any) {
+      tools[tool.name] = tool;
+    },
+    appendEntry() {},
+  } as any;
+
+  const mockCompleteFn = async (_model: any, _ctx: any, _opts: any) => ({
+    content: [{ type: 'text' as const, text: 'mock summary' }],
+  });
+
+  const mockModel = { id: 'claude-haiku-4-5', provider: 'anthropic', api: 'anthropic' } as any;
+  const mockModelRegistry = {
+    find(provider: string, modelId: string) {
+      if (provider === 'anthropic' && modelId === 'claude-haiku-4-5') return mockModel;
+      return undefined;
+    },
+    async getApiKey(_model: any) {
+      return 'oauth-token';
+    },
+  } as any;
+
+  extensionSetup(mockPi, undefined, {
+    dbDir: join(testDir, 'db'),
+    completeFn: mockCompleteFn,
+    largeFileCacheRoot: cacheRoot,
+  } as any);
+
+  const mockCtx = {
+    sessionManager: {
+      getSessionId: () => 'cache-session',
+      getBranch: () => [],
+    },
+    cwd: '/tmp/test-cwd',
+    modelRegistry: mockModelRegistry,
+    ui: { setStatus() {} },
+    getContextUsage: () => undefined,
+  } as any;
+
+  await handlers['session_start']({ type: 'session_start' }, mockCtx);
+
+  assert.ok(!existsSync(join(thisSessionCache, 'stale.txt')), 'current session stale cache should be removed on startup');
+  assert.ok(existsSync(join(otherSessionCache, 'keep.txt')), 'other session cache should survive startup sweep');
+
+  const toolResultEvent = {
+    type: 'tool_result' as const,
+    toolName: 'read',
+    toolCallId: 'cache_call',
+    input: { path: '/project/src/huge.ts' },
+    content: [{ type: 'text' as const, text: 'export const x = 1;\n'.repeat(5000) }],
+    isError: false,
+    details: undefined,
+  };
+
+  const interceptResult = await handlers['tool_result'](toolResultEvent, mockCtx);
+  assert.ok(interceptResult, 'tool_result should create a session cache file');
+  assert.ok(existsSync(thisSessionCache), 'current session cache dir should exist after interception');
+
+  await handlers['session_shutdown']({ type: 'session_shutdown' }, mockCtx);
+
+  assert.ok(!existsSync(thisSessionCache), 'current session cache dir should be removed on shutdown');
+  assert.ok(existsSync(join(otherSessionCache, 'keep.txt')), 'other session cache should survive shutdown');
+
+  rmSync(testDir, { recursive: true, force: true });
+});

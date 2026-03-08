@@ -88,7 +88,7 @@ describe('lcm_expand execute', () => {
     const text = (result.content[0] as { type: 'text'; text: string }).text;
     assert.ok(text.includes('[Truncated'), 'Should contain truncation notice');
     assert.ok(!text.includes('line three'), 'Should not contain content beyond truncation point');
-    assert.ok(text.startsWith('line one content\nline two content'), 'Should contain content up to truncation');
+    assert.ok(text.startsWith('line one content'), 'Should contain content up to truncation');
   });
 
   it('never throws — returns error text on unexpected failure (AC 13)', async () => {
@@ -327,6 +327,39 @@ describe('lcm_expand large file pagination', () => {
     assert.ok(parsed.staleNote.includes('changed since capture'), 'note should mention change');
     // Should still return the cached content
     assert.ok(parsed.content.includes('cached content'), 'should still return cached content');
+
+    rmSync(cacheDir, { recursive: true, force: true });
+  });
+
+  it('returns pages whose content stays within maxExpandTokens under estimateTokens()', async () => {
+    const { estimateTokens } = await import('../summarizer/token-estimator.ts');
+
+    const contentStore = new MemoryContentStore();
+    const dagStore = new MemoryStore();
+    dagStore.openConversation('test-session', '/tmp');
+
+    const cacheDir = mkdtempSync(join(tmpdir(), 'lcm-expand-budget-test-'));
+    const storagePath = join(cacheDir, 'budget.txt');
+    const fileContent = 'a'.repeat(315);
+    writeFileSync(storagePath, fileContent, 'utf-8');
+
+    const fileId = dagStore.insertLargeFile({
+      path: '/project/budget.ts',
+      explorationSummary: '# budget.ts',
+      tokenCount: estimateTokens(fileContent),
+      storagePath,
+      capturedAt: Date.now(),
+      fileMtime: Date.now(),
+    });
+
+    const execute = createExpandExecute(contentStore, { maxExpandTokens: 100 }, dagStore);
+    const result = await execute('call1', { id: fileId, offset: 0 });
+    const parsed = JSON.parse((result.content[0] as { type: 'text'; text: string }).text);
+
+    assert.ok(
+      estimateTokens(parsed.content) <= 100,
+      `Expected page content to stay within 100 estimated tokens, got ${estimateTokens(parsed.content)}`,
+    );
 
     rmSync(cacheDir, { recursive: true, force: true });
   });

@@ -13,6 +13,19 @@ import type {
 } from './types.ts';
 import { StoreClosedError } from './types.ts';
 
+function compileSearchRegex(pattern: string): RegExp {
+  const nestedQuantifierPattern = /\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{]/;
+  if (nestedQuantifierPattern.test(pattern)) {
+    throw new Error('Unsafe search regex: nested quantifiers are not allowed');
+  }
+
+  try {
+    return new RegExp(pattern, 'i');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid search regex: ${message}`);
+  }
+}
 export class MemoryStore implements Store {
   private closed = false;
 
@@ -158,13 +171,14 @@ export class MemoryStore implements Store {
       summary => summary.conversationId === conversationId,
     );
 
+    const re = mode === 'regex' ? compileSearchRegex(pattern) : null;
+
     const match = (text: string): boolean => {
       if (mode === 'fulltext') {
         return text.toLowerCase().includes(pattern.toLowerCase());
       }
 
-      const re = new RegExp(pattern, 'i');
-      return re.test(text);
+      return re!.test(text);
     };
 
     const results: GrepResult[] = [];

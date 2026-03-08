@@ -1,6 +1,6 @@
 {
   "name": "pi-lcm",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "keywords": ["pi-package"],
   "pi": {
@@ -17,6 +17,7 @@
     "@mariozechner/pi-coding-agent": "*"
   },
   "dependencies": {
+    "@sinclair/typebox": "^0.34.48",
     "zod": "^3.24.0"
   },
   "devDependencies": {

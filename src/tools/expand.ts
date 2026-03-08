@@ -7,6 +7,7 @@ import type { Store, StoredLargeFile } from '../store/types.ts';
 import { ExpandResultSchema, LargeFileExpandResultSchema } from '../schemas.ts';
 import { truncateToTokenBudget } from './truncate.ts';
 import { debugLog } from '../debug.ts';
+import { ESTIMATED_CHARS_PER_TOKEN, maxCharsForTokenBudget } from '../summarizer/token-estimator.ts';
 
 function textResult(text: string): AgentToolResult<undefined> {
   return { content: [{ type: 'text', text }], details: undefined };
@@ -15,12 +16,11 @@ function textResult(text: string): AgentToolResult<undefined> {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TRUNCATION_NOTICE_RE = /\n\n\[Truncated — content exceeds token budget\. Showing first ~\d+ of ~\d+ estimated tokens\.\]$/;
 function chunkForPagination(text: string, maxTokens: number): string {
-  const charLimit = Math.floor(maxTokens * 3.5);
+  const charLimit = maxCharsForTokenBudget(maxTokens);
   if (text.length <= charLimit) return text;
   const truncated = truncateToTokenBudget(text, maxTokens);
   const noticeMatch = truncated.match(TRUNCATION_NOTICE_RE);
   if (!noticeMatch) return truncated;
-
   const chunk = truncated.slice(0, -noticeMatch[0].length);
   if (chunk.length > 0) return chunk;
   return text.slice(0, Math.max(1, charLimit));
@@ -41,7 +41,7 @@ function expandLargeFile(
   });
   // AC 16: clamp negative offset
   const offset = Math.max(0, rawOffset);
-  const charOffset = Math.floor(offset * 3.5 + 1e-6);
+  const charOffset = Math.floor(offset * ESTIMATED_CHARS_PER_TOKEN + 1e-6);
 
   let fileContent: string;
   try {
@@ -70,7 +70,7 @@ function expandLargeFile(
   const chunk = chunkForPagination(remaining, maxExpandTokens);
   const chunkEndCharOffset = charOffset + chunk.length;
   const hasMore = chunkEndCharOffset < fileContent.length;
-  const nextOffsetTokens = chunkEndCharOffset / 3.5;
+  const nextOffsetTokens = chunkEndCharOffset / ESTIMATED_CHARS_PER_TOKEN;
 
   // AC 18: stale detection
   let stale = false;

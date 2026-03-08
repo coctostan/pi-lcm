@@ -32,6 +32,20 @@ function sanitizeFts5Query(pattern: string): string {
   return tokens.map(t => `"${t.replace(/"/g, '""')}"`).join(' ');
 }
 
+
+function compileSearchRegex(pattern: string): RegExp {
+  const nestedQuantifierPattern = /\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)[+*{]/;
+  if (nestedQuantifierPattern.test(pattern)) {
+    throw new Error('Unsafe search regex: nested quantifiers are not allowed');
+  }
+
+  try {
+    return new RegExp(pattern, 'i');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid search regex: ${message}`);
+  }
+}
 export class SqliteStore implements Store {
   private readonly db: DatabaseSync;
   private closed = false;
@@ -433,7 +447,7 @@ export class SqliteStore implements Store {
     }
 
     // regex: load and filter in JS
-    const re = new RegExp(pattern, 'i');
+    const re = compileSearchRegex(pattern);
     const messages = this.getMessagesAfter(-1).filter(m => re.test(m.content));
 
     const summaries = this.db

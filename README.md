@@ -155,7 +155,7 @@ Phase 2 format (DAG active):
 🟢 45% | 8 summaries (d1) | tail: 32
 ```
 
-Color thresholds: 🟢 < 50% · 🟡 50–80% · 🔴 > 80%
+Color thresholds: 🟢 < 60% · 🟡 60–84% · 🔴 ≥ 85%
 
 ---
 
