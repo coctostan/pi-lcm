@@ -5,6 +5,7 @@ export function selectLeafChunk(
   freshTailCount: number,
   leafChunkTokens: number,
   store: Pick<Store, 'getMessage'>,
+  skippedStartMessageIds: ReadonlySet<string> = new Set(),
 ): Array<{ kind: 'message'; messageId: string }> {
   const eligibleEnd = Math.max(0, contextItems.length - freshTailCount);
   if (eligibleEnd <= 0) return [];
@@ -12,10 +13,13 @@ export function selectLeafChunk(
   let start = -1;
   for (let i = 0; i < eligibleEnd; i++) {
     const item = contextItems[i]!;
-    if (item.kind === 'message') {
-      start = i;
-      break;
+    if (item.kind !== 'message') continue;
+    if (skippedStartMessageIds.has(item.messageId)) {
+      while (i + 1 < eligibleEnd && contextItems[i + 1]!.kind === 'message') i += 1;
+      continue;
     }
+    start = i;
+    break;
   }
 
   if (start === -1) return [];
@@ -51,6 +55,7 @@ export function selectCondensationChunk(
   condensedMinFanout: number,
   leafChunkTokens: number,
   store: Pick<Store, 'getSummary'>,
+  skippedStartSummaryIds: ReadonlySet<string> = new Set(),
 ): Array<{ kind: 'summary'; summaryId: string }> {
   const eligibleEnd = Math.max(0, contextItems.length - freshTailCount);
   if (eligibleEnd <= 0) return [];
@@ -60,10 +65,21 @@ export function selectCondensationChunk(
     const item = contextItems[i]!;
     if (item.kind !== 'summary') continue;
     const summary = store.getSummary(item.summaryId);
-    if (summary && summary.depth === depth) {
-      start = i;
-      break;
+    if (!summary || summary.depth !== depth) continue;
+
+    if (skippedStartSummaryIds.has(item.summaryId)) {
+      while (i + 1 < eligibleEnd) {
+        const nextItem = contextItems[i + 1]!;
+        if (nextItem.kind !== 'summary') break;
+        const nextSummary = store.getSummary(nextItem.summaryId);
+        if (!nextSummary || nextSummary.depth !== depth) break;
+        i += 1;
+      }
+      continue;
     }
+
+    start = i;
+    break;
   }
 
   if (start === -1) return [];

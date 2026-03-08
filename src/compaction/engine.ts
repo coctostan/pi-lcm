@@ -9,6 +9,7 @@ import { estimateTokens } from '../summarizer/token-estimator.ts';
 import { debugLog } from '../debug.ts';
 import { selectCondensationChunk, selectLeafChunk } from './chunk-selector.ts';
 import type { CompactionConfig, CompactionResult } from './types.ts';
+import { validateSummaryContent } from './validate-summary.ts';
 
 let compactionRunning = false;
 
@@ -134,6 +135,18 @@ function recordSummarySkip(
   });
 }
 
+function recordRejectedSummary(
+  result: CompactionResult,
+  phase: 'leaf' | 'condensed',
+  reason: string,
+): void {
+  result.noOpReasons.push('summary_rejected');
+  debugLog('compaction summary rejected', {
+    phase,
+    reason,
+  });
+}
+
 export async function runCompaction(
   store: Store,
   summarizer: Summarizer,
@@ -172,6 +185,7 @@ export async function runCompaction(
   };
 
   let previousTotalTokens: number | undefined;
+  const rejectedLeafStartIds = new Set<string>();
 
   while (!signal.aborted) {
     const contextItems = store.getContextItems();
@@ -186,6 +200,7 @@ export async function runCompaction(
       config.freshTailCount,
       config.leafChunkTokens,
       store,
+      rejectedLeafStartIds,
     );
 
     if (chunk.length === 0) break;
@@ -243,6 +258,13 @@ export async function runCompaction(
     if (summaryContent.trim().length === 0) {
       break;
     }
+    const validationResult = validateSummaryContent(summaryContent, 'leaf');
+    if (!validationResult.valid) {
+      recordRejectedSummary(result, 'leaf', validationResult.reason);
+      rejectedLeafStartIds.add(messageIds[0]!);
+      previousTotalTokens = undefined;
+      continue;
+    }
     if (outputTokens >= inputTokens) {
       result.noOpReasons.push('leaf_not_smaller_than_input');
       break;
@@ -280,9 +302,14 @@ export async function runCompaction(
   }
 
   previousTotalTokens = undefined;
+  const rejectedCondensedStartIds = new Set<string>();
 
   while (!signal.aborted) {
     let condensedInThisSweep = false;
+    const hasSummarizerSkip = result.noOpReasons.some(
+      r => r === 'summary_error_response' || r === 'summary_missing_text',
+    );
+    if (hasSummarizerSkip) break;
     const contextItems = store.getContextItems();
     const currentTotalTokens = getContextTotalTokens(contextItems, store);
     if (previousTotalTokens !== undefined && currentTotalTokens >= previousTotalTokens) {
@@ -305,6 +332,7 @@ export async function runCompaction(
         config.condensedMinFanout,
         config.leafChunkTokens,
         store,
+        rejectedCondensedStartIds,
       );
 
       if (chunk.length === 0) continue;
@@ -338,15 +366,19 @@ export async function runCompaction(
         throw error;
       }
 
+      if (summaryContent.trim().length === 0) {
+        break;
+      }
+      const validationResult = validateSummaryContent(summaryContent, 'condensed');
+      if (!validationResult.valid) {
+        recordRejectedSummary(result, 'condensed', validationResult.reason);
+        rejectedCondensedStartIds.add(childIds[0]!);
+        previousTotalTokens = undefined;
+        condensedInThisSweep = true;
+        break;
+      }
       const condensationInputTokens = estimateTokens(input);
       const condensationOutputTokens = estimateTokens(summaryContent);
-      debugLog('compaction condensed summary generated', {
-        depth: depth + 1,
-        inputTokens: condensationInputTokens,
-        outputTokens: condensationOutputTokens,
-        outputChars: summaryContent.length,
-        outputPreview: summaryContent.slice(0, 120),
-      });
       if (condensationOutputTokens >= condensationInputTokens) {
         result.noOpReasons.push('condensation_not_smaller_than_input');
         continue;
@@ -376,7 +408,7 @@ export async function runCompaction(
       });
       result.actionTaken = true;
     result.summariesCreated += 1;
-      condensedInThisSweep = true;
+      condensedInThisSweep = rejectedCondensedStartIds.size === 0;
       break;
     }
     if (!condensedInThisSweep) break;
