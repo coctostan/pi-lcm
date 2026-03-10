@@ -162,6 +162,22 @@ export class MemoryStore implements Store {
     return s.content;
   }
 
+  /**
+   * Returns true if the message is LCM tool chatter that should be
+   * excluded from grep results to prevent self-pollution.
+   */
+  private isLcmToolNoise(message: StoredMessage): boolean {
+    // Exclude tool results from LCM tools only (lcm_grep, lcm_expand, lcm_describe)
+    if (message.role === 'toolResult' && message.toolName?.startsWith('lcm_')) {
+      return true;
+    }
+    // Exclude assistant messages that are purely LCM tool call invocations
+    if (message.role === 'assistant' && /^\[toolCall: lcm_/.test(message.content)) {
+      return true;
+    }
+    return false;
+  }
+
   grepMessages(pattern: string, mode: 'fulltext' | 'regex'): GrepResult[] {
     this.assertOpen();
     const conversationId = this.requireConversationId();
@@ -184,6 +200,7 @@ export class MemoryStore implements Store {
     const results: GrepResult[] = [];
 
     for (const message of messageHaystack) {
+      if (this.isLcmToolNoise(message)) continue;
       if (match(message.content)) {
         results.push({ kind: 'message', id: message.id, snippet: message.content.slice(0, 200) });
       }

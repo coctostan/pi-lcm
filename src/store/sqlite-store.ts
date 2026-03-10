@@ -427,7 +427,9 @@ export class SqliteStore implements Store {
           `SELECT m.id AS id, m.content AS content
            FROM messages_fts f
            JOIN messages m ON m.rowid = f.rowid
-           WHERE m.conversationId = ? AND messages_fts MATCH ?`
+           WHERE m.conversationId = ? AND messages_fts MATCH ?
+             AND NOT (m.role = 'toolResult' AND m.toolName LIKE 'lcm_%')
+             AND NOT (m.role = 'assistant' AND m.content LIKE '[toolCall: lcm_%')`
         )
         .all(conversationId, sanitized) as any[];
 
@@ -448,7 +450,11 @@ export class SqliteStore implements Store {
 
     // regex: load and filter in JS
     const re = compileSearchRegex(pattern);
-    const messages = this.getMessagesAfter(-1).filter(m => re.test(m.content));
+    const messages = this.getMessagesAfter(-1).filter(m => {
+      if (m.role === 'toolResult' && m.toolName?.startsWith('lcm_')) return false;
+      if (m.role === 'assistant' && /^\[toolCall: lcm_/.test(m.content)) return false;
+      return re.test(m.content);
+    });
 
     const summaries = this.db
       .prepare(
