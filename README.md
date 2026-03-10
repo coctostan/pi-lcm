@@ -184,6 +184,9 @@ npm run build
 # Run tests
 npm test
 ```
+For interactive regression checks, use the cmux workflow in [`TESTING.md`](./TESTING.md). Include strict-output prompts such as `Reply with exactly one short sentence, nothing else: hello.`, `Output exactly one JSON object, nothing else: {"ok":true}`, and `raw output only` tool passthrough checks as part of the supported surface.
+
+When launching with explicit `--model` (for example `--model anthropic/claude-haiku-4-5`), startup should reflect that active model and should not show unrelated stale `enabledModels` warnings like `No models match pattern ...`.
 
 346 tests, zero dependencies beyond `zod` and the pi peer package.
 

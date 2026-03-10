@@ -108,6 +108,8 @@ The key flags:
 - `-e ./src/index.ts` — load pi-lcm specifically
 - `--session-dir /tmp/...` — isolate from real sessions
 - `--model anthropic/claude-haiku-4-5` — cheap model for testing
+- startup should reflect the active CLI model (for example `Model: anthropic/claude-haiku-4-5`)
+- startup should **not** emit unrelated stale-scope warnings like `No models match pattern "kimi-coder/kimi-for-coding"`
 ### Step 2.5: If `cmux_send` says "Surface is not a terminal"
 
 You are targeting the wrong thing.
@@ -135,6 +137,7 @@ pi-lcm: debug: session_start ready { dagReady: true, contextItems: 0, messages: 
 ```
 
 If you see `dagReady: true` and the pi prompt, you're good.
+For the explicit `--model anthropic/claude-haiku-4-5` launch above, startup output should show the active model banner and should not include unrelated `No models match pattern ...` noise from saved `enabledModels` settings.
 
 Also capture the DB path / UUID now. You'll need it later for `inspect-live-db.ts`.
 
@@ -183,13 +186,15 @@ Use the read tool on ROADMAP.md again and give me just the next unreleased work 
 You MUST call the lcm_grep tool now with query 'LCM-CANARY'. Show the raw tool output only.
 Call lcm_describe on summary ID <paste-id-here> and show the raw tool output only.
 Call lcm_expand on ID <paste-id-here> and show the first 10 lines only.
+Reply with exactly one short sentence, nothing else: hello.
+Output exactly one JSON object, nothing else: {"ok":true}
 ```
 Notes:
 - with default config, expect compaction only **after** you have crossed the `freshTailCount: 32` boundary
 - if you are still seeing `actionTaken: false` and `tail: 32`, keep driving a few more substantial turns before judging compaction broken
 - `lcm_grep` may return a message hit before it returns a summary hit; that's still useful signal
 - once compaction has persisted summaries, use one of those summary IDs for `lcm_describe` / `lcm_expand`
-- the assistant may still add commentary even when told `raw output only`; judge success by whether the tool call happened and the output is valid
+- for strict prompts (`raw output only`, `exactly one short sentence`, `exactly one JSON object`), success means the visible assistant output is exact passthrough/format with no extra prose, no fence, and no thinking/tool chrome
 
 ### Step 6: Inspect the DB
 From your own terminal (not the split pane), run the inspector using the DB path captured at startup:
