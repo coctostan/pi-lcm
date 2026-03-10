@@ -252,6 +252,48 @@ export function runStoreContractTests(name: string, factory: () => Store) {
       store.close();
     });
 
+    it('grepMessages excludes lcm_ tool results and lcm_ tool call assistant messages', () => {
+      const store = factory();
+      store.openConversation('sess_1', '/tmp/project');
+
+      // Substantive user message
+      store.ingestMessage({
+        id: 'm0', seq: 0, role: 'user',
+        content: 'alpha beta gamma',
+        tokenCount: 3, createdAt: 1,
+      });
+
+      // lcm_grep tool result — should be excluded
+      store.ingestMessage({
+        id: 'm1', seq: 1, role: 'toolResult',
+        toolName: 'lcm_grep',
+        content: '{"results":[{"snippet":"alpha beta"}]}',
+        tokenCount: 5, createdAt: 2,
+      });
+
+      // Assistant lcm_ tool call — should be excluded
+      store.ingestMessage({
+        id: 'm2', seq: 2, role: 'assistant',
+        content: '[toolCall: lcm_grep] {"query":"alpha"}',
+        tokenCount: 5, createdAt: 3,
+      });
+
+      // Non-LCM tool result — should be included
+      store.ingestMessage({
+        id: 'm3', seq: 3, role: 'toolResult',
+        toolName: 'read',
+        content: 'file with alpha content',
+        tokenCount: 5, createdAt: 4,
+      });
+
+      const ftResults = store.grepMessages('alpha', 'fulltext');
+      const ftIds = ftResults.map(r => r.id).sort();
+      assert.deepStrictEqual(ftIds, ['m0', 'm3'], 'fulltext should exclude lcm_ tool noise');
+
+      store.close();
+    });
+
+
     it('insertLargeFile/getLargeFile roundtrip preserves all fields; returns undefined for unknown id', () => {
       const store = factory();
       store.openConversation('sess_1', '/tmp/project');
