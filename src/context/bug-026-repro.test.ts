@@ -131,16 +131,23 @@ describe('Bug #026 — ContextBuilder drops user/assistant context_items without
         ? summaryMessage.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
         : '';
 
-    assert.ok(summaryText.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
+    assert.ok(summaryText.startsWith('[LCM Context Summary — this summarizes earlier parts of the conversation]'));
     assert.ok(summaryText.includes('Summary 1: Summary for prior condensed context.'));
-    assert.ok(summaryText.includes('Current user message: User asks for a bug reproduction.'));
+    assert.ok(!summaryText.includes('Current user message:'));
     assert.ok(!summaryText.includes('"id"'));
     assert.ok(!summaryText.includes('"msgRange"'));
-    assert.strictEqual(result.messages[1], eventMessages[1]);
-    assert.deepStrictEqual(
-      result.messages.map(message => message.role),
-      ['user', 'assistant'],
-      `Expected framed summary + referenced assistant, got roles: ${result.messages.map(message => message.role).join(', ')}`,
-    );
+    assert.deepStrictEqual(result.messages.map((m) => m.role), ['user', 'assistant', 'user', 'assistant']);
+
+    assert.deepStrictEqual((result.messages[1] as any).content, [{ type: 'text', text: '[context received]' }]);
+
+    const restoredUser = result.messages[2] as any;
+    const restoredUserText = typeof restoredUser.content === 'string'
+      ? restoredUser.content
+      : Array.isArray(restoredUser.content)
+        ? restoredUser.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
+        : '';
+    assert.strictEqual(restoredUserText, 'User asks for a bug reproduction.');
+
+    assert.strictEqual(result.messages[3], eventMessages[1]);
   });
 });

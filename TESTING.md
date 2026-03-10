@@ -155,31 +155,38 @@ cmux_read_screen({ surface: "surface:8", lines: 120 })
 ```
 
 **Golden rule:** every send/read in this test uses the **same pane surface ID** until you intentionally create a replacement pane.
+**Important default-config expectation:** with the shipped defaults, compaction does **not** normally start after only a few turns. The default `freshTailCount` is `32`, so you should expect to go **past 32 context items/messages** before leaf summaries start appearing. In a realistic interactive session, plan on roughly **8+ substantial user prompts** (often landing around **34-36 total messages**) before expecting `actionTaken: true`.
 **What to look for in the debug output after each turn:**
 - `agent_end ingested { ingested: N, totalMessages: M }` — messages being tracked
-- `summarize start` — summarization path actually running
+- before you cross the default threshold, expect repeated `agent_end compaction result { actionTaken: false, summariesCreated: 0 }`
+- once you get past the default tail boundary, expect `summarize start` — summarization path actually running
 - `summarize response` — check `stopReason`, `errorMessage`, `responseParts`, `contentTypes`, `outputChars`
 - `store insertSummary persisted` — summary actually written with non-zero content/token counts
 - `agent_end compaction result { actionTaken: true, summariesCreated: N }` — compaction firing
-- Status bar at bottom: `🟢 X% | N summaries (d0/d1/...) | tail: 8`
-
+- Status bar at bottom: `🟢 X% | N summaries (d0/d1/...) | tail: 32` under the default config
 For issue #023 specifically, success means `summarize response` is **not** an auth/error shape and `store insertSummary persisted` shows non-zero lengths.
 
 ### Step 5: Exercise the DAG tools
-After enough turns for compaction to create summaries, force explicit tool usage. Cheaper models may ignore vague requests, so use very direct prompts.
+After enough turns for compaction to create summaries, force explicit tool usage. **Do not start this step too early on default config** — first confirm from debug output or the status bar that summaries exist. Cheaper models may ignore vague requests, so use very direct prompts.
 
-Recommended sequence:
-
+A practical default-config sequence is:
 ```txt
 Remember this marker exactly for later retrieval tests: LCM-CANARY-HAIKU-003. Reply with exactly: stored.
 Use the read tool on ROADMAP.md and give me the top priorities you see in 5 bullets.
 Use the read tool on PRD.md and give me 4 bullets on the product goals and non-goals.
+Use the read tool on ARCHITECTURE.md and summarize the main components in 10 bullets.
+Use the read tool on TESTING.md and summarize the interactive testing checklist and deep stress additions in 12 bullets.
+Use the read tool on README.md and summarize setup and usage in 8 bullets.
+Use the read tool on VISION.md and summarize the value proposition and target users in 6 bullets.
+Use the read tool on HANDOFF.md and summarize current implementation status and next steps in 8 bullets.
+Use the read tool on ROADMAP.md again and give me just the next unreleased work items in 5 bullets.
 You MUST call the lcm_grep tool now with query 'LCM-CANARY'. Show the raw tool output only.
 Call lcm_describe on summary ID <paste-id-here> and show the raw tool output only.
 Call lcm_expand on ID <paste-id-here> and show the first 10 lines only.
 ```
-
 Notes:
+- with default config, expect compaction only **after** you have crossed the `freshTailCount: 32` boundary
+- if you are still seeing `actionTaken: false` and `tail: 32`, keep driving a few more substantial turns before judging compaction broken
 - `lcm_grep` may return a message hit before it returns a summary hit; that's still useful signal
 - once compaction has persisted summaries, use one of those summary IDs for `lcm_describe` / `lcm_expand`
 - the assistant may still add commentary even when told `raw output only`; judge success by whether the tool call happened and the output is valid
