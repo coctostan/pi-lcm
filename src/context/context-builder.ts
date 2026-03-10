@@ -53,28 +53,6 @@ function formatSummaryContext(summaryContents: string[]): string {
     summaryContents.map((c, i) => `Summary ${i + 1}: ${c}`).join('\n\n');
 }
 
-function mergeSummaryIntoUserMessage(summaryText: string, message: AgentMessage): AgentMessage {
-  const candidate = message as any;
-
-  if (typeof candidate.content === 'string') {
-    return {
-      ...candidate,
-      content: `${summaryText}\n\nCurrent user message: ${candidate.content}`,
-    } as AgentMessage;
-  }
-
-  if (Array.isArray(candidate.content)) {
-    return {
-      ...candidate,
-      content: [{ type: 'text', text: summaryText }, ...candidate.content],
-    } as AgentMessage;
-  }
-
-  return {
-    ...candidate,
-    content: summaryText,
-  } as AgentMessage;
-}
 
 export class ContextBuilder {
   private handler: ContextHandler;
@@ -139,12 +117,20 @@ export class ContextBuilder {
       }
     }
 
-    // Present summaries as user-provided context so the model reads them as prior conversation state.
+    // Present summaries as a separate user context message. Never merge into the
+    // current user message — current-turn user intent must stay authoritative.
     if (summaryContents.length > 0) {
       const summaryText = formatSummaryContext(summaryContents);
-
       if (assembled[0]?.role === 'user') {
-        assembled[0] = mergeSummaryIntoUserMessage(summaryText, assembled[0]!);
+        // Maintain user/assistant alternation without rewriting current user text.
+        assembled.unshift(
+          { role: 'user', content: summaryText, timestamp: 0 } as AgentMessage,
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: '[context received]' }],
+            timestamp: 0,
+          } as AgentMessage,
+        );
       } else {
         assembled.unshift({ role: 'user', content: summaryText, timestamp: 0 } as AgentMessage);
       }
