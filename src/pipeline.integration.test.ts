@@ -248,7 +248,7 @@ describe('Pipeline integration — medium session ContextBuilder + status bar (A
     const builder = createBuilder(store);
     const result = builder.buildContext(agentMessages);
 
-    // Should contain at least one framed summary user message
+    // Should contain at least one framed summary context message
     const summaryMessages = result.messages.filter((m: any) => {
       const text = typeof m.content === 'string'
         ? m.content
@@ -256,17 +256,19 @@ describe('Pipeline integration — medium session ContextBuilder + status bar (A
           ? m.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
           : '';
 
-      return m.role === 'user' && text.includes('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]');
+      return text.includes('[LCM Context Summary — this summarizes earlier parts of the conversation]');
     });
-
     assert.ok(
       summaryMessages.length >= 1,
-      `Expected at least 1 framed summary user message, got ${summaryMessages.length}`,
+      `Expected at least 1 framed summary context message, got ${summaryMessages.length}`,
     );
 
-    const firstSummaryText = typeof (summaryMessages[0] as any).content === 'string'
-      ? (summaryMessages[0] as any).content
-      : '';
+    const firstSummaryMessage = summaryMessages[0] as any;
+    const firstSummaryText = typeof firstSummaryMessage?.content === 'string'
+      ? firstSummaryMessage.content
+      : Array.isArray(firstSummaryMessage?.content)
+        ? firstSummaryMessage.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
+        : '';
     assert.ok(firstSummaryText.includes('Summary 1:'), 'Framed summary should include numbered summary lines');
     assert.ok(!firstSummaryText.includes('"id"'));
     assert.ok(!firstSummaryText.includes('"msgRange"'));

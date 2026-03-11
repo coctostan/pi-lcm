@@ -4,7 +4,6 @@
  * context items from context-event AgentMessage objects that do not expose
  * session entry IDs.
  */
-
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SessionEntry } from '@mariozechner/pi-coding-agent';
@@ -23,8 +22,20 @@ function createBuilder(store: MemoryStore): ContextBuilder {
   return new ContextBuilder(handler, store);
 }
 
+function textOf(message: AgentMessage): string {
+  const content = (message as any).content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((part: any) => part.type === 'text')
+      .map((part: any) => part.text)
+      .join('\n');
+  }
+  return '';
+}
+
 describe('Bug #026 — ContextBuilder drops user/assistant context_items without entry ids', () => {
-  it('should preserve user/assistant messages referenced by context_items after summary injection', () => {
+  it('preserves restored user/assistant messages while moving the persisted summary into assistant context', () => {
     const store = new MemoryStore();
     store.openConversation('sess_bug_026', '/tmp/project');
 
@@ -123,31 +134,22 @@ describe('Bug #026 — ContextBuilder drops user/assistant context_items without
     ];
 
     const result = createBuilder(store).buildContext(eventMessages);
-    const summaryMessage = result.messages[0] as any;
-    assert.strictEqual(summaryMessage.role, 'user');
-    const summaryText = typeof summaryMessage.content === 'string'
-      ? summaryMessage.content
-      : Array.isArray(summaryMessage.content)
-        ? summaryMessage.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
-        : '';
+    assert.deepStrictEqual(
+      result.messages.map((m) => m.role),
+      ['assistant', 'user', 'assistant'],
+      'Historical summary should be emitted as assistant context before restored user/assistant turns',
+    );
 
+    const summaryText = textOf(result.messages[0]!);
     assert.ok(summaryText.startsWith('[LCM Context Summary — this summarizes earlier parts of the conversation]'));
     assert.ok(summaryText.includes('Summary 1: Summary for prior condensed context.'));
     assert.ok(!summaryText.includes('Current user message:'));
+    assert.ok(!summaryText.includes('[context received]'));
     assert.ok(!summaryText.includes('"id"'));
     assert.ok(!summaryText.includes('"msgRange"'));
-    assert.deepStrictEqual(result.messages.map((m) => m.role), ['user', 'assistant', 'user', 'assistant']);
 
-    assert.deepStrictEqual((result.messages[1] as any).content, [{ type: 'text', text: '[context received]' }]);
-
-    const restoredUser = result.messages[2] as any;
-    const restoredUserText = typeof restoredUser.content === 'string'
-      ? restoredUser.content
-      : Array.isArray(restoredUser.content)
-        ? restoredUser.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
-        : '';
+    const restoredUserText = textOf(result.messages[1]!);
     assert.strictEqual(restoredUserText, 'User asks for a bug reproduction.');
-
-    assert.strictEqual(result.messages[3], eventMessages[1]);
+    assert.strictEqual(result.messages[2], eventMessages[1]);
   });
 });

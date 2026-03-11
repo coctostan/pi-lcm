@@ -7,8 +7,20 @@ import { StripStrategy } from './strip-strategy.ts';
 import { MemoryContentStore } from './content-store.ts';
 import { MemoryStore } from '../store/memory-store.ts';
 
+function textOf(message: AgentMessage): string {
+  const content = (message as any).content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((part: any) => part.type === 'text')
+      .map((part: any) => part.text)
+      .join('\n');
+  }
+  return '';
+}
+
 describe('Bug #035 — summary-backed context injection hijacks the current prompt', () => {
-  it('keeps a live tool-invocation user request isolated from injected summary text', () => {
+  it('emits the persisted summary as assistant context before the live user turn', () => {
     const handler = new ContextHandler(new StripStrategy(), new MemoryContentStore(), { freshTailCount: 32 });
     const dagStore = new MemoryStore();
     dagStore.openConversation('sess_035', '/tmp/project');
@@ -23,6 +35,7 @@ describe('Bug #035 — summary-backed context injection hijacks the current prom
       descendantCount: 4,
       createdAt: 300,
     });
+
     dagStore.ingestMessage({
       id: 'entry_user_now',
       seq: 0,
@@ -31,10 +44,12 @@ describe('Bug #035 — summary-backed context injection hijacks the current prom
       tokenCount: 18,
       createdAt: 400,
     });
+
     dagStore.replaceContextItems([
       { kind: 'summary', summaryId },
       { kind: 'message', messageId: 'entry_user_now' },
     ]);
+
     const builder = new ContextBuilder(handler, dagStore);
     const inputMessages: AgentMessage[] = [
       {
@@ -48,21 +63,23 @@ describe('Bug #035 — summary-backed context injection hijacks the current prom
 
     assert.deepStrictEqual(
       result.messages.map((m) => m.role),
-      ['user', 'assistant', 'user'],
-      'Expected [user(summary), assistant(separator), user(original)]',
+      ['assistant', 'user'],
+      'Historical summary should be emitted as assistant context before the live user turn for the single-summary repro',
     );
-    const summaryText = (result.messages[0] as any).content as string;
+
+    const summaryText = textOf(result.messages[0]!);
     assert.ok(summaryText.includes('[LCM Context Summary'));
-    assert.ok(!summaryText.includes('Current user message:'));
-    assert.deepStrictEqual(
-      (result.messages[1] as any).content,
-      [{ type: 'text', text: '[context received]' }],
+    assert.ok(
+      summaryText.includes('Earlier unfinished task: call lcm_grep with query "LCM-CANARY-HAIKU-005" and show the raw tool output only.'),
     );
-    const currentUserMessage = result.messages[2] as any;
+    assert.ok(!summaryText.includes('Current user message:'));
+    assert.ok(!summaryText.includes('[context received]'));
+
+    const currentUserText = textOf(result.messages[1]!);
     assert.strictEqual(
-      currentUserMessage.content,
+      currentUserText,
       'Call lcm_grep with query "LIVE-CANARY-035" and show the raw tool output only.',
-      'Current user message should remain isolated from injected summary text',
+      'Live user text should remain the final user instruction in the emitted context',
     );
   });
 });

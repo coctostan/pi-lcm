@@ -40,7 +40,7 @@ function assertNoConsecutiveSameRole(messages: AgentMessage[]): void {
 }
 
 describe('Bug 027 — inject summaries as framed user context', () => {
-  it('injects summaries as separate message with role separator before user message', () => {
+  it('emits multiple persisted summaries as assistant context before the live user turn', () => {
     const store = new MemoryStore();
     store.openConversation('sess_027_merge', '/tmp/project');
 
@@ -54,6 +54,7 @@ describe('Bug 027 — inject summaries as framed user context', () => {
       descendantCount: 2,
       createdAt: 300,
     });
+
     const sid2 = store.insertSummary({
       depth: 1,
       kind: 'condensed',
@@ -64,6 +65,7 @@ describe('Bug 027 — inject summaries as framed user context', () => {
       descendantCount: 4,
       createdAt: 350,
     });
+
     store.ingestMessage({
       id: 'msg_user',
       seq: 0,
@@ -72,28 +74,35 @@ describe('Bug 027 — inject summaries as framed user context', () => {
       tokenCount: 5,
       createdAt: 400,
     });
+
     store.replaceContextItems([
       { kind: 'summary', summaryId: sid1 },
       { kind: 'summary', summaryId: sid2 },
       { kind: 'message', messageId: 'msg_user' },
     ]);
+
     const messages: AgentMessage[] = [
       { role: 'user', content: 'What was the marker word?', timestamp: 400 } as AgentMessage,
       { role: 'user', content: 'UNREFERENCED OLD', timestamp: 401 } as AgentMessage,
     ];
 
     const result = makeBuilder(store).buildContext(messages);
+    assert.deepStrictEqual(
+      result.messages.map((m) => m.role),
+      ['assistant', 'user'],
+      'Historical summaries should be emitted as assistant context before the live user turn when multiple summaries exist',
+    );
 
-    assert.deepStrictEqual(result.messages.map((m) => m.role), ['user', 'assistant', 'user']);
     const summaryText = textOf(result.messages[0]!);
     assert.ok(summaryText.startsWith(FRAME_PREFIX));
     assert.ok(summaryText.includes('Summary 1: The marker word is BANANA.'));
     assert.ok(summaryText.includes('Summary 2: The assistant asked follow-up questions about configuration.'));
     assert.ok(!summaryText.includes('Current user message:'));
+    assert.ok(!summaryText.includes('[context received]'));
     assert.ok(!summaryText.includes('"id"'));
     assert.ok(!summaryText.includes('"msgRange"'));
-    assert.deepStrictEqual((result.messages[1] as any).content, [{ type: 'text', text: '[context received]' }]);
-    const userText = textOf(result.messages[2]!);
+
+    const userText = textOf(result.messages[1]!);
     assert.strictEqual(userText, 'What was the marker word?');
     assertNoConsecutiveSameRole(result.messages);
     assert.ok(!result.messages.some((m) => textOf(m).includes('UNREFERENCED OLD')));
@@ -115,6 +124,7 @@ describe('Bug 027 — inject summaries as framed user context', () => {
       descendantCount: 2,
       createdAt: 200,
     });
+
     const sid2 = store.insertSummary({
       depth: 0,
       kind: 'leaf',
@@ -221,7 +231,14 @@ describe('Bug 027 — inject summaries as framed user context', () => {
 
     const result = makeBuilder(store).buildContext([
       assistantMessage,
-      { role: 'toolResult', toolCallId: 'unref', toolName: 'read', content: [{ type: 'text', text: 'UNREF' }], isError: false, timestamp: 401 } as AgentMessage,
+      {
+        role: 'toolResult',
+        toolCallId: 'unref',
+        toolName: 'read',
+        content: [{ type: 'text', text: 'UNREF' }],
+        isError: false,
+        timestamp: 401,
+      } as AgentMessage,
     ]);
 
     assert.deepStrictEqual(result.messages.map((m) => m.role), ['user', 'assistant']);
