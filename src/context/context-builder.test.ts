@@ -42,7 +42,7 @@ describe('ContextBuilder — no DAG Store', () => {
 
 
 describe('ContextBuilder — with DAG Store', () => {
-  it('injects framed summaries as user context text (AC 5)', () => {
+  it('injects inline assistant summaries from DAG context items (AC 5)', () => {
     const contentStore = new MemoryContentStore();
     const strategy = new StripStrategy();
     const handler = new ContextHandler(strategy, contentStore, { freshTailCount: 32 });
@@ -66,17 +66,15 @@ describe('ContextBuilder — with DAG Store', () => {
     ]);
     const summaryMsg = result.messages[0] as any;
     assert.strictEqual(result.messages.length, 1);
-    assert.strictEqual(summaryMsg.role, 'user');
+    assert.strictEqual(summaryMsg.role, 'assistant');
     const summaryText = typeof summaryMsg.content === 'string'
       ? summaryMsg.content
       : Array.isArray(summaryMsg.content)
         ? summaryMsg.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
         : '';
-    assert.ok(summaryText.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
-    assert.ok(summaryText.includes('Summary 1: Messages 1-5: user discussed config setup.'));
-    assert.ok(!summaryText.includes('Current user message:'));
-    assert.ok(!summaryText.includes('"id"'));
-    assert.ok(!summaryText.includes('"msgRange"'));
+    assert.strictEqual(summaryText, 'Messages 1-5: user discussed config setup.');
+    assert.ok(!summaryText.includes('[LCM Context Summary'));
+    assert.ok(!summaryText.includes('Summary 1:'));
   });
 
   it('resolves message-kind context items for real-contract user/assistant messages without synthetic ids', () => {
@@ -274,18 +272,17 @@ describe('ContextBuilder — with DAG Store', () => {
 
     const result = builder.buildContext(messages);
     assert.strictEqual(result.messages.length, 2);
-    assert.strictEqual((result.messages[0] as any).role, 'user');
-
+    assert.strictEqual((result.messages[0] as any).role, 'assistant');
     const summaryText = typeof (result.messages[0] as any).content === 'string'
       ? (result.messages[0] as any).content
       : Array.isArray((result.messages[0] as any).content)
         ? (result.messages[0] as any).content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
         : '';
 
-    assert.ok(summaryText.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
-    assert.ok(summaryText.includes('Summary 1: Summary one.'));
-    assert.ok(!summaryText.includes('"id"'));
-    assert.ok(!summaryText.includes('"msgRange"'));
+    assert.strictEqual(summaryText, 'Summary one.');
+    assert.ok(!summaryText.includes('[LCM Context Summary'));
+    assert.ok(!summaryText.includes('Summary 1:'));
+    assert.ok(!summaryText.includes('[context received]'));
     assert.strictEqual(result.messages[1], messages[0]);
     assert.ok(
       !result.messages.some((m: any) => m.role === 'user' && m.content === 'UNREFERENCED OLD'),
@@ -322,21 +319,15 @@ describe('ContextBuilder — with DAG Store', () => {
       { role: 'user' as const, content: 'hi', timestamp: 1 } as AgentMessage,
     ]);
 
-    const framedSummaries = result.messages.filter((m: any) => {
-      const text = typeof m.content === 'string'
-        ? m.content
-        : Array.isArray(m.content)
-          ? m.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
-          : '';
-      return m.role === 'user' && text.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]');
-    });
-    assert.strictEqual(framedSummaries.length, 1);
-    const firstText = typeof (framedSummaries[0] as any).content === 'string'
-      ? (framedSummaries[0] as any).content
-      : '';
-    assert.ok(firstText.includes('Summary 1: Valid summary.'));
-    assert.ok(!firstText.includes('"id"'));
-    assert.ok(!firstText.includes('"msgRange"'));
+    assert.strictEqual(result.messages.length, 1);
+    assert.strictEqual(result.messages[0]!.role, 'assistant');
+    const firstText = typeof (result.messages[0] as any).content === 'string'
+      ? (result.messages[0] as any).content
+      : Array.isArray((result.messages[0] as any).content)
+        ? (result.messages[0] as any).content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
+        : '';
+    assert.strictEqual(firstText, 'Valid summary.');
+    assert.strictEqual(result.stats.summaryCount, 1);
   });
 
   it('returns ContextHandlerResult with stats including strippedCount and estimatedTokensSaved (AC 11)', () => {
