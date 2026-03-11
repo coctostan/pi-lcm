@@ -137,6 +137,22 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
     return { messages: result.messages };
   });
 
+  pi.on('before_agent_start', async (event, _ctx) => {
+    const lcmNotice = '\n\n[LCM — Lossless Context Management is active. ' +
+      'Older messages may be summarized. Use lcm_expand, lcm_grep, or lcm_describe to retrieve archived content.]';
+    return {
+      systemPrompt: (event as any).systemPrompt + lcmNotice,
+    };
+  });
+
+  (pi as any).on('before_provider_request', async (event: any, _ctx: any) => {
+    debugLog('before_provider_request', {
+      systemLength: typeof event?.payload?.system === 'string' ? event.payload.system.length : 0,
+      messageCount: Array.isArray(event?.payload?.messages) ? event.payload.messages.length : 0,
+    });
+    return undefined;
+  });
+
   pi.on('session_start', async (_event, ctx) => {
     const sessionId = ctx.sessionManager.getSessionId();
     const branch = ctx.sessionManager.getBranch();
