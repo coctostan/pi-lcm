@@ -53,6 +53,13 @@ function formatSummaryContext(summaryContents: string[]): string {
     summaryContents.map((c, i) => `Summary ${i + 1}: ${c}`).join('\n\n');
 }
 
+function createAssistantSummaryMessage(summaryText: string): AgentMessage {
+  return {
+    role: 'assistant',
+    content: [{ type: 'text', text: summaryText }],
+    timestamp: 0,
+  } as AgentMessage;
+}
 
 export class ContextBuilder {
   private handler: ContextHandler;
@@ -76,6 +83,7 @@ export class ContextBuilder {
     const inputMessages = messages ?? [];
     const assembled: AgentMessage[] = [];
     const usedInputIndexes = new Set<number>();
+
     let strippedCount = 0;
     let summaryCount = 0;
     let maxDepth = 0;
@@ -91,7 +99,6 @@ export class ContextBuilder {
         if (summary.depth > maxDepth) {
           maxDepth = summary.depth;
         }
-
         summaryContents.push(summary.content);
         continue;
       }
@@ -117,20 +124,18 @@ export class ContextBuilder {
       }
     }
 
-    // Present summaries as a separate user context message. Never merge into the
-    // current user message — current-turn user intent must stay authoritative.
+    // Final user-leading contract: any user-leading assembled context should get
+    // persisted summaries as assistant context so historical text never becomes
+    // a stronger synthetic user instruction. Non-user-leading paths keep the
+    // framed user-summary behavior.
     if (summaryContents.length > 0) {
       const summaryText = formatSummaryContext(summaryContents);
-      if (assembled[0]?.role === 'user') {
-        // Maintain user/assistant alternation without rewriting current user text.
-        assembled.unshift(
-          { role: 'user', content: summaryText, timestamp: 0 } as AgentMessage,
-          {
-            role: 'assistant',
-            content: [{ type: 'text', text: '[context received]' }],
-            timestamp: 0,
-          } as AgentMessage,
-        );
+      const shouldEmitAssistantSummary =
+        assembled[0]?.role === 'user' &&
+        (assembled.length === 1 || assembled.some((message) => message.role === 'assistant'));
+
+      if (shouldEmitAssistantSummary) {
+        assembled.unshift(createAssistantSummaryMessage(summaryText));
       } else {
         assembled.unshift({ role: 'user', content: summaryText, timestamp: 0 } as AgentMessage);
       }
@@ -143,11 +148,6 @@ export class ContextBuilder {
       maxDepth: summaryCount > 0 ? maxDepth : undefined,
     };
 
-    // Safety guard: if assembled is empty, the API call would fail with
-    // "messages: at least one message is required". This can happen when
-    // context items reference user/assistant messages that have no toolCallId
-    // or id field in the AgentMessage objects from the context event.
-    // Fall back to the normal handler to ensure we always send valid messages.
     if (assembled.length === 0) {
       return this.handler.process(messages);
     }
