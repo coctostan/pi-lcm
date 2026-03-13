@@ -141,12 +141,10 @@ describe('Bug #026 — ContextBuilder drops user/assistant context_items without
     );
 
     const summaryText = textOf(result.messages[0]!);
-    assert.ok(summaryText.startsWith('[LCM Context Summary — this summarizes earlier parts of the conversation]'));
-    assert.ok(summaryText.includes('Summary 1: Summary for prior condensed context.'));
-    assert.ok(!summaryText.includes('Current user message:'));
+    assert.strictEqual(summaryText, 'Summary for prior condensed context.');
+    assert.ok(!summaryText.includes('[LCM Context Summary'));
+    assert.ok(!summaryText.includes('Summary 1:'));
     assert.ok(!summaryText.includes('[context received]'));
-    assert.ok(!summaryText.includes('"id"'));
-    assert.ok(!summaryText.includes('"msgRange"'));
 
     const restoredUserText = textOf(result.messages[1]!);
     assert.strictEqual(restoredUserText, 'User asks for a bug reproduction.');

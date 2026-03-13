@@ -7,8 +7,6 @@ import { StripStrategy } from './strip-strategy.ts';
 import { MemoryContentStore } from './content-store.ts';
 import { MemoryStore } from '../store/memory-store.ts';
 
-const FRAME_PREFIX = '[LCM Context Summary — this summarizes earlier parts of the conversation]';
-
 function makeBuilder(dagStore: MemoryStore): ContextBuilder {
   const contentStore = new MemoryContentStore();
   const strategy = new StripStrategy();
@@ -28,19 +26,8 @@ function textOf(message: AgentMessage): string {
   return '';
 }
 
-function assertNoConsecutiveSameRole(messages: AgentMessage[]): void {
-  const roles = messages.map((m) => m.role);
-  for (let i = 1; i < roles.length; i++) {
-    assert.notStrictEqual(
-      roles[i],
-      roles[i - 1],
-      `Consecutive same-role messages at ${i - 1}-${i}: ${roles.join(' -> ')}`,
-    );
-  }
-}
-
-describe('Bug 027 — inject summaries as framed user context', () => {
-  it('emits multiple persisted summaries as assistant context before the live user turn', () => {
+describe('Bug 027 — emit assistant summaries for short leading summary runs', () => {
+  it('emits two leading summaries as standalone assistant messages before the live user turn', () => {
     const store = new MemoryStore();
     store.openConversation('sess_027_merge', '/tmp/project');
 
@@ -87,30 +74,33 @@ describe('Bug 027 — inject summaries as framed user context', () => {
     ];
 
     const result = makeBuilder(store).buildContext(messages);
+
     assert.deepStrictEqual(
       result.messages.map((m) => m.role),
-      ['assistant', 'user'],
-      'Historical summaries should be emitted as assistant context before the live user turn when multiple summaries exist',
+      ['assistant', 'assistant', 'user'],
+      'Historical summaries should be emitted as standalone assistant messages before the live user turn',
     );
 
-    const summaryText = textOf(result.messages[0]!);
-    assert.ok(summaryText.startsWith(FRAME_PREFIX));
-    assert.ok(summaryText.includes('Summary 1: The marker word is BANANA.'));
-    assert.ok(summaryText.includes('Summary 2: The assistant asked follow-up questions about configuration.'));
-    assert.ok(!summaryText.includes('Current user message:'));
-    assert.ok(!summaryText.includes('[context received]'));
-    assert.ok(!summaryText.includes('"id"'));
-    assert.ok(!summaryText.includes('"msgRange"'));
+    assert.strictEqual(textOf(result.messages[0]!), 'The marker word is BANANA.');
+    assert.strictEqual(
+      textOf(result.messages[1]!),
+      'The assistant asked follow-up questions about configuration.',
+    );
+    assert.strictEqual(textOf(result.messages[2]!), 'What was the marker word?');
 
-    const userText = textOf(result.messages[1]!);
-    assert.strictEqual(userText, 'What was the marker word?');
-    assertNoConsecutiveSameRole(result.messages);
+    const renderedTexts = result.messages.map((m) => textOf(m));
+    for (const text of renderedTexts) {
+      assert.ok(!text.includes('[LCM Context Summary'));
+      assert.ok(!text.includes('Summary 1:'));
+      assert.ok(!text.includes('[context received]'));
+    }
+
     assert.ok(!result.messages.some((m) => textOf(m).includes('UNREFERENCED OLD')));
     assert.strictEqual(result.stats.summaryCount, 2);
     assert.strictEqual(result.stats.maxDepth, 1);
   });
 
-  it('prepends one synthetic user summary before a referenced toolResult message', () => {
+  it('emits two leading summaries as standalone assistant messages before a referenced toolResult', () => {
     const store = new MemoryStore();
     store.openConversation('sess_027_tool', '/tmp/project');
 
@@ -166,23 +156,24 @@ describe('Bug 027 — inject summaries as framed user context', () => {
 
     const result = makeBuilder(store).buildContext(messages);
 
-    assert.deepStrictEqual(result.messages.map((m) => m.role), ['user', 'toolResult']);
-    const summaryText = textOf(result.messages[0]!);
-    assert.ok(summaryText.startsWith(FRAME_PREFIX));
-    assert.ok(summaryText.includes('Summary 1: Tool read output contained tsconfig updates.'));
-    assert.ok(summaryText.includes('Summary 2: The user requested a focused patch.'));
-    assert.ok(!summaryText.includes('Current user message:'));
-    assert.ok(!summaryText.includes('"id"'));
-    assert.ok(!summaryText.includes('"msgRange"'));
+    assert.deepStrictEqual(result.messages.map((m) => m.role), ['assistant', 'assistant', 'toolResult']);
+    assert.strictEqual(textOf(result.messages[0]!), 'Tool read output contained tsconfig updates.');
+    assert.strictEqual(textOf(result.messages[1]!), 'The user requested a focused patch.');
+    assert.strictEqual(result.messages[2], messages[0]);
 
-    assertNoConsecutiveSameRole(result.messages);
-    assert.strictEqual(result.messages[1], messages[0]);
+    const renderedTexts = result.messages.map((m) => textOf(m));
+    for (const text of renderedTexts) {
+      assert.ok(!text.includes('[LCM Context Summary'));
+      assert.ok(!text.includes('Summary 1:'));
+      assert.ok(!text.includes('[context received]'));
+    }
+
     assert.ok(!result.messages.some((m) => textOf(m).includes('UNREFERENCED USER')));
     assert.strictEqual(result.stats.summaryCount, 2);
     assert.strictEqual(result.stats.maxDepth, 0);
   });
 
-  it('prepends one synthetic user summary before a referenced assistant message', () => {
+  it('emits one leading summary as a standalone assistant message before a referenced assistant message', () => {
     const store = new MemoryStore();
     store.openConversation('sess_027_assistant', '/tmp/project');
 
@@ -241,16 +232,17 @@ describe('Bug 027 — inject summaries as framed user context', () => {
       } as AgentMessage,
     ]);
 
-    assert.deepStrictEqual(result.messages.map((m) => m.role), ['user', 'assistant']);
-    const summaryText = textOf(result.messages[0]!);
-    assert.ok(summaryText.startsWith(FRAME_PREFIX));
-    assert.ok(summaryText.includes('Summary 1: Assistant already proposed a migration plan.'));
-    assert.ok(!summaryText.includes('Current user message:'));
-    assert.ok(!summaryText.includes('"id"'));
-    assert.ok(!summaryText.includes('"msgRange"'));
-
-    assertNoConsecutiveSameRole(result.messages);
+    assert.deepStrictEqual(result.messages.map((m) => m.role), ['assistant', 'assistant']);
+    assert.strictEqual(textOf(result.messages[0]!), 'Assistant already proposed a migration plan.');
     assert.strictEqual(result.messages[1], assistantMessage);
+
+    const renderedTexts = result.messages.map((m) => textOf(m));
+    for (const text of renderedTexts) {
+      assert.ok(!text.includes('[LCM Context Summary'));
+      assert.ok(!text.includes('Summary 1:'));
+      assert.ok(!text.includes('[context received]'));
+    }
+
     assert.ok(!result.messages.some((m) => textOf(m).includes('UNREF')));
     assert.strictEqual(result.stats.summaryCount, 1);
     assert.strictEqual(result.stats.maxDepth, 1);
