@@ -48,34 +48,22 @@ function hasDirectMessageId(message: AgentMessage, messageId: string): boolean {
   return candidate.toolCallId === messageId || ('id' in candidate && candidate.id === messageId);
 }
 
-type InjectedSummaryContext = Pick<
-  StoredSummary,
-  'summaryId' | 'depth' | 'kind' | 'content' | 'earliestAt' | 'latestAt' | 'descendantCount'
-> & {
-  childIds: string[];
-};
+function formatSummaryText(summary: StoredSummary, childIds: string[]): string {
+  const lines = [
+    summary.content,
+    `summaryId: ${summary.summaryId}`,
+    `depth: ${summary.depth}`,
+    `kind: ${summary.kind}`,
+    `earliestAt: ${summary.earliestAt}`,
+    `latestAt: ${summary.latestAt}`,
+    `descendantCount: ${summary.descendantCount}`,
+  ];
 
-function formatSummaryContext(summaries: InjectedSummaryContext[]): string {
-  return `[LCM Context Summary — this summarizes earlier parts of the conversation]\n\n` +
-    summaries
-      .map((summary, i) => {
-        const lines = [
-          `Summary ${i + 1}: ${summary.content}`,
-          `summaryId: ${summary.summaryId}`,
-          `depth: ${summary.depth}`,
-          `kind: ${summary.kind}`,
-          `earliestAt: ${summary.earliestAt}`,
-          `latestAt: ${summary.latestAt}`,
-          `descendantCount: ${summary.descendantCount}`,
-        ];
+  if (childIds.length > 0) {
+    lines.push(`childIds: ${childIds.join(', ')}`);
+  }
 
-        if (summary.childIds.length > 0) { // AC 5: include child IDs when available
-          lines.push(`childIds: ${summary.childIds.join(', ')}`);
-        }
-
-        return lines.join('\n');
-      })
-      .join('\n\n');
+  return lines.join('\n');
 }
 
 function createAssistantSummaryMessage(summaryText: string): AgentMessage {
@@ -112,7 +100,6 @@ export class ContextBuilder {
     let strippedCount = 0;
     let summaryCount = 0;
     let maxDepth = 0;
-    const summaries: InjectedSummaryContext[] = [];
 
     for (const item of contextItems) {
       if (item.kind === 'summary') {
@@ -124,16 +111,9 @@ export class ContextBuilder {
         if (summary.depth > maxDepth) {
           maxDepth = summary.depth;
         }
-        summaries.push({
-          summaryId: summary.summaryId,
-          depth: summary.depth,
-          kind: summary.kind,
-          earliestAt: summary.earliestAt,
-          latestAt: summary.latestAt,
-          descendantCount: summary.descendantCount,
-          childIds: this.dagStore.getSummaryChildIds(summary.summaryId),
-          content: summary.content,
-        });
+        const childIds = this.dagStore.getSummaryChildIds(summary.summaryId);
+        const text = formatSummaryText(summary, childIds);
+        assembled.push(createAssistantSummaryMessage(text));
         continue;
       }
 
@@ -155,23 +135,6 @@ export class ContextBuilder {
       if (resolvedIndex >= 0) {
         assembled.push(inputMessages[resolvedIndex]!);
         usedInputIndexes.add(resolvedIndex);
-      }
-    }
-
-    // Final user-leading contract: any user-leading assembled context should get
-    // persisted summaries as assistant context so historical text never becomes
-    // a stronger synthetic user instruction. Non-user-leading paths keep the
-    // framed user-summary behavior.
-    if (summaries.length > 0) {
-      const summaryText = formatSummaryContext(summaries);
-      const shouldEmitAssistantSummary =
-        assembled[0]?.role === 'user' &&
-        (assembled.length === 1 || assembled.some((message) => message.role === 'assistant'));
-
-      if (shouldEmitAssistantSummary) {
-        assembled.unshift(createAssistantSummaryMessage(summaryText));
-      } else {
-        assembled.unshift({ role: 'user', content: summaryText, timestamp: 0 } as AgentMessage);
       }
     }
 

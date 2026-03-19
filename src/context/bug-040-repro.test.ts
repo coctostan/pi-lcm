@@ -214,9 +214,12 @@ describe('Bug #040 — injected summaries should be addressable memory objects',
       { role: 'user' as const, content: 'what next', timestamp: 1000 } as AgentMessage,
     ]);
 
-    const summaryText = textOf(result.messages[0]!);
-    assert.ok(summaryText.includes(`summaryId: ${sid1}`));
-    assert.ok(summaryText.includes(`summaryId: ${sid2}`));
+    // With inline architecture, each summary is a separate assistant message
+    assert.strictEqual(result.messages.length, 3); // 2 summaries + 1 user
+    const summary1Text = textOf(result.messages[0]!);
+    const summary2Text = textOf(result.messages[1]!);
+    assert.ok(summary1Text.includes(`summaryId: ${sid1}`));
+    assert.ok(summary2Text.includes(`summaryId: ${sid2}`));
   });
 
   it('includes childIds when lineage is available', () => {

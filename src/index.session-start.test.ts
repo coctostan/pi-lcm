@@ -106,10 +106,17 @@ describe('session_start handler', () => {
     assert.strictEqual(contextResult.messages.length, 1, 'ContextBuilder should use dagStore-backed context_items');
 
     const summaryMessage = contextResult.messages[0] as any;
-    assert.strictEqual(summaryMessage.role, 'user');
-    assert.ok(typeof summaryMessage.content === 'string');
-    assert.ok(summaryMessage.content.includes('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
-    assert.ok(summaryMessage.content.includes('Summary 1: post-start summary'));
+    assert.strictEqual(summaryMessage.role, 'assistant');
+    const text = Array.isArray(summaryMessage.content)
+      ? summaryMessage.content
+          .filter((p: any) => p.type === 'text')
+          .map((p: any) => p.text)
+          .join('\n')
+      : String(summaryMessage.content);
+    assert.ok(text.includes('post-start summary'));
+    assert.ok(text.includes('summaryId:'));
+    assert.ok(!text.includes('[LCM Context Summary'));
+    assert.ok(!text.includes('Summary 1:'));
 
     store.close();
   });
