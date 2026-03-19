@@ -25,6 +25,7 @@ import { registerGrepTool, createGrepExecute } from './tools/grep.ts';
 import { interceptLargeFile } from './large-files/interceptor.ts';
 import { sessionLargeFileCacheDir, resetSessionLargeFileCache } from './large-files/cache-dir.ts';
 import { debugLog } from './debug.ts';
+import { getLcmOperatingContract } from './system-prompt.ts';
 
 /**
  * pi-lcm extension entry point.
@@ -138,10 +139,9 @@ export default function (pi: ExtensionAPI, config?: LCMConfig, _internal?: Inter
   });
 
   pi.on('before_agent_start', async (event, _ctx) => {
-    const lcmNotice = '\n\n[LCM — Lossless Context Management is active. ' +
-      'Older messages may be summarized. Use lcm_expand, lcm_grep, or lcm_describe to retrieve archived content.]';
+    const contract = getLcmOperatingContract();
     return {
-      systemPrompt: (event as any).systemPrompt + lcmNotice,
+      systemPrompt: (event as any).systemPrompt + contract,
     };
   });
 

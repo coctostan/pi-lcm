@@ -1,6 +1,7 @@
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { ContextHandler, ContextHandlerResult, ContextHandlerStats } from './context-handler.ts';
 import type { Store, StoredMessage, StoredSummary } from '../store/types.ts';
+import { isFreshUserTurn, extractUserQuery, buildCueBlock } from './cue-builder.ts';
 
 function serializeMessageForMatch(message: AgentMessage): string {
   const candidate = message as any;
@@ -138,17 +139,33 @@ export class ContextBuilder {
       }
     }
 
+    // Cue injection: insert <memory-cues> before the final user turn
+    if (this.dagStore && assembled.length > 0) {
+      const freshTurn = isFreshUserTurn(assembled);
+      if (freshTurn) {
+        const userQuery = extractUserQuery(assembled);
+        if (userQuery) {
+          const activeSummaryIds = new Set<string>();
+          for (const item of contextItems) {
+            if (item.kind === 'summary') activeSummaryIds.add(item.summaryId);
+          }
+          const cueMsg = buildCueBlock(this.dagStore, userQuery, activeSummaryIds);
+          if (cueMsg) {
+            // Insert cue block immediately before the last message (the user turn)
+            assembled.splice(assembled.length - 1, 0, cueMsg);
+          }
+        }
+      }
+    }
     const stats: ContextHandlerStats = {
       strippedCount,
       estimatedTokensSaved: 0,
       summaryCount,
       maxDepth: summaryCount > 0 ? maxDepth : undefined,
     };
-
     if (assembled.length === 0) {
       return this.handler.process(messages);
     }
-
     return { messages: assembled, stats };
   }
 }
