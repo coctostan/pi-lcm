@@ -1,6 +1,6 @@
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { ContextHandler, ContextHandlerResult, ContextHandlerStats } from './context-handler.ts';
-import type { Store, StoredMessage } from '../store/types.ts';
+import type { Store, StoredMessage, StoredSummary } from '../store/types.ts';
 
 function serializeMessageForMatch(message: AgentMessage): string {
   const candidate = message as any;
@@ -48,6 +48,23 @@ function hasDirectMessageId(message: AgentMessage, messageId: string): boolean {
   return candidate.toolCallId === messageId || ('id' in candidate && candidate.id === messageId);
 }
 
+function formatSummaryText(summary: StoredSummary, childIds: string[]): string {
+  const lines = [
+    summary.content,
+    `summaryId: ${summary.summaryId}`,
+    `depth: ${summary.depth}`,
+    `kind: ${summary.kind}`,
+    `earliestAt: ${summary.earliestAt}`,
+    `latestAt: ${summary.latestAt}`,
+    `descendantCount: ${summary.descendantCount}`,
+  ];
+
+  if (childIds.length > 0) {
+    lines.push(`childIds: ${childIds.join(', ')}`);
+  }
+
+  return lines.join('\n');
+}
 
 function createAssistantSummaryMessage(summaryText: string): AgentMessage {
   return {
@@ -94,7 +111,9 @@ export class ContextBuilder {
         if (summary.depth > maxDepth) {
           maxDepth = summary.depth;
         }
-        assembled.push(createAssistantSummaryMessage(summary.content));
+        const childIds = this.dagStore.getSummaryChildIds(summary.summaryId);
+        const text = formatSummaryText(summary, childIds);
+        assembled.push(createAssistantSummaryMessage(text));
         continue;
       }
 

@@ -81,10 +81,9 @@ describe('Bug 027 — emit assistant summaries for short leading summary runs', 
       'Historical summaries should be emitted as standalone assistant messages before the live user turn',
     );
 
-    assert.strictEqual(textOf(result.messages[0]!), 'The marker word is BANANA.');
-    assert.strictEqual(
-      textOf(result.messages[1]!),
-      'The assistant asked follow-up questions about configuration.',
+    assert.ok(textOf(result.messages[0]!).includes('The marker word is BANANA.'));
+    assert.ok(
+      textOf(result.messages[1]!).includes('The assistant asked follow-up questions about configuration.'),
     );
     assert.strictEqual(textOf(result.messages[2]!), 'What was the marker word?');
 
@@ -157,8 +156,8 @@ describe('Bug 027 — emit assistant summaries for short leading summary runs', 
     const result = makeBuilder(store).buildContext(messages);
 
     assert.deepStrictEqual(result.messages.map((m) => m.role), ['assistant', 'assistant', 'toolResult']);
-    assert.strictEqual(textOf(result.messages[0]!), 'Tool read output contained tsconfig updates.');
-    assert.strictEqual(textOf(result.messages[1]!), 'The user requested a focused patch.');
+    assert.ok(textOf(result.messages[0]!).includes('Tool read output contained tsconfig updates.'));
+    assert.ok(textOf(result.messages[1]!).includes('The user requested a focused patch.'));
     assert.strictEqual(result.messages[2], messages[0]);
 
     const renderedTexts = result.messages.map((m) => textOf(m));
@@ -233,7 +232,7 @@ describe('Bug 027 — emit assistant summaries for short leading summary runs', 
     ]);
 
     assert.deepStrictEqual(result.messages.map((m) => m.role), ['assistant', 'assistant']);
-    assert.strictEqual(textOf(result.messages[0]!), 'Assistant already proposed a migration plan.');
+    assert.ok(textOf(result.messages[0]!).includes('Assistant already proposed a migration plan.'));
     assert.strictEqual(result.messages[1], assistantMessage);
 
     const renderedTexts = result.messages.map((m) => textOf(m));

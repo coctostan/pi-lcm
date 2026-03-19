@@ -107,9 +107,11 @@ describe('Bug #039 — flattened summary preamble replaces inline ordered summar
     const rendered = result.messages.map(textOf);
     assert.ok(!rendered.some((text) => text.includes('[LCM Context Summary')));
     assert.ok(!rendered.some((text) => text.includes('Summary 1:')));
-    assert.strictEqual(rendered[0], 'Older summary A.');
+    assert.ok(rendered[0]!.includes('Older summary A.'), 'First summary content present');
+    assert.ok(rendered[0]!.includes('summaryId:'), 'First summary metadata present');
     assert.strictEqual(rendered[1], 'Midpoint assistant reply.');
-    assert.strictEqual(rendered[2], 'Later summary B.');
+    assert.ok(rendered[2]!.includes('Later summary B.'), 'Second summary content present');
+    assert.ok(rendered[2]!.includes('summaryId:'), 'Second summary metadata present');
     assert.strictEqual(rendered[3], 'Live user turn.');
   });
 });

@@ -72,9 +72,14 @@ describe('ContextBuilder — with DAG Store', () => {
       : Array.isArray(summaryMsg.content)
         ? summaryMsg.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
         : '';
-    assert.strictEqual(summaryText, 'Messages 1-5: user discussed config setup.');
-    assert.ok(!summaryText.includes('[LCM Context Summary'));
-    assert.ok(!summaryText.includes('Summary 1:'));
+    assert.ok(summaryText.includes('Messages 1-5: user discussed config setup.'));
+    assert.ok(summaryText.includes('depth: 0'));
+    assert.ok(summaryText.includes('kind: leaf'));
+    assert.ok(summaryText.includes('earliestAt: 100'));
+    assert.ok(summaryText.includes('latestAt: 500'));
+    assert.ok(summaryText.includes('descendantCount: 5'));
+    assert.ok(!summaryText.includes('"id"'));
+    assert.ok(!summaryText.includes('"msgRange"'));
   });
 
   it('resolves message-kind context items for real-contract user/assistant messages without synthetic ids', () => {
@@ -279,10 +284,14 @@ describe('ContextBuilder — with DAG Store', () => {
         ? (result.messages[0] as any).content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
         : '';
 
-    assert.strictEqual(summaryText, 'Summary one.');
-    assert.ok(!summaryText.includes('[LCM Context Summary'));
-    assert.ok(!summaryText.includes('Summary 1:'));
-    assert.ok(!summaryText.includes('[context received]'));
+    assert.ok(summaryText.includes('Summary one.'));
+    assert.ok(summaryText.includes('depth: 0'));
+    assert.ok(summaryText.includes('kind: leaf'));
+    assert.ok(summaryText.includes('earliestAt: 100'));
+    assert.ok(summaryText.includes('latestAt: 200'));
+    assert.ok(summaryText.includes('descendantCount: 2'));
+    assert.ok(!summaryText.includes('"id"'));
+    assert.ok(!summaryText.includes('"msgRange"'));
     assert.strictEqual(result.messages[1], messages[0]);
     assert.ok(
       !result.messages.some((m: any) => m.role === 'user' && m.content === 'UNREFERENCED OLD'),
@@ -326,7 +335,14 @@ describe('ContextBuilder — with DAG Store', () => {
       : Array.isArray((result.messages[0] as any).content)
         ? (result.messages[0] as any).content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
         : '';
-    assert.strictEqual(firstText, 'Valid summary.');
+    assert.ok(firstText.includes('Valid summary.'));
+    assert.ok(firstText.includes('depth: 0'));
+    assert.ok(firstText.includes('kind: leaf'));
+    assert.ok(firstText.includes('earliestAt: 100'));
+    assert.ok(firstText.includes('latestAt: 200'));
+    assert.ok(firstText.includes('descendantCount: 2'));
+    assert.ok(!firstText.includes('"id"'));
+    assert.ok(!firstText.includes('"msgRange"'));
     assert.strictEqual(result.stats.summaryCount, 1);
   });
 

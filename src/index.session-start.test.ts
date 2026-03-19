@@ -113,7 +113,8 @@ describe('session_start handler', () => {
           .map((p: any) => p.text)
           .join('\n')
       : String(summaryMessage.content);
-    assert.strictEqual(text, 'post-start summary');
+    assert.ok(text.includes('post-start summary'));
+    assert.ok(text.includes('summaryId:'));
     assert.ok(!text.includes('[LCM Context Summary'));
     assert.ok(!text.includes('Summary 1:'));
 

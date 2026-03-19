@@ -59,7 +59,8 @@ describe('src/index.ts — ContextBuilder wiring (AC 24)', () => {
         ? summaryMsg.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n')
         : '';
 
-    assert.strictEqual(summaryText, 'Summary of early messages about project setup.');
+    assert.ok(summaryText.includes('Summary of early messages about project setup.'));
+    assert.ok(summaryText.includes('summaryId:'));
   });
 
   it('falls back to Phase 1 behavior when no DAG Store', async () => {

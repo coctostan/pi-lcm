@@ -63,7 +63,10 @@ describe('ContextBuilder summary-only DAG contexts', () => {
     assert.deepStrictEqual(result.messages.map((m) => m.role), ['assistant', 'assistant']);
 
     const renderedTexts = result.messages.map((m) => textOf(m));
-    assert.deepStrictEqual(renderedTexts, ['First historical summary.', 'Second historical summary.']);
+    assert.ok(renderedTexts[0]!.includes('First historical summary.'));
+    assert.ok(renderedTexts[0]!.includes('summaryId:'));
+    assert.ok(renderedTexts[1]!.includes('Second historical summary.'));
+    assert.ok(renderedTexts[1]!.includes('summaryId:'));
     for (const text of renderedTexts) {
       assert.ok(!text.includes('[LCM Context Summary'));
       assert.ok(!text.includes('Summary 1:'));
