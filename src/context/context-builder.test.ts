@@ -74,6 +74,11 @@ describe('ContextBuilder — with DAG Store', () => {
         : '';
     assert.ok(summaryText.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
     assert.ok(summaryText.includes('Summary 1: Messages 1-5: user discussed config setup.'));
+    assert.ok(summaryText.includes('depth: 0'));
+    assert.ok(summaryText.includes('kind: leaf'));
+    assert.ok(summaryText.includes('earliestAt: 100'));
+    assert.ok(summaryText.includes('latestAt: 500'));
+    assert.ok(summaryText.includes('descendantCount: 5'));
     assert.ok(!summaryText.includes('Current user message:'));
     assert.ok(!summaryText.includes('"id"'));
     assert.ok(!summaryText.includes('"msgRange"'));
@@ -284,6 +289,11 @@ describe('ContextBuilder — with DAG Store', () => {
 
     assert.ok(summaryText.startsWith('[LCM Context Summary \u2014 this summarizes earlier parts of the conversation]'));
     assert.ok(summaryText.includes('Summary 1: Summary one.'));
+    assert.ok(summaryText.includes('depth: 0'));
+    assert.ok(summaryText.includes('kind: leaf'));
+    assert.ok(summaryText.includes('earliestAt: 100'));
+    assert.ok(summaryText.includes('latestAt: 200'));
+    assert.ok(summaryText.includes('descendantCount: 2'));
     assert.ok(!summaryText.includes('"id"'));
     assert.ok(!summaryText.includes('"msgRange"'));
     assert.strictEqual(result.messages[1], messages[0]);
@@ -335,6 +345,11 @@ describe('ContextBuilder — with DAG Store', () => {
       ? (framedSummaries[0] as any).content
       : '';
     assert.ok(firstText.includes('Summary 1: Valid summary.'));
+    assert.ok(firstText.includes('depth: 0'));
+    assert.ok(firstText.includes('kind: leaf'));
+    assert.ok(firstText.includes('earliestAt: 100'));
+    assert.ok(firstText.includes('latestAt: 200'));
+    assert.ok(firstText.includes('descendantCount: 2'));
     assert.ok(!firstText.includes('"id"'));
     assert.ok(!firstText.includes('"msgRange"'));
   });

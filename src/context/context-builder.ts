@@ -1,6 +1,6 @@
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type { ContextHandler, ContextHandlerResult, ContextHandlerStats } from './context-handler.ts';
-import type { Store, StoredMessage } from '../store/types.ts';
+import type { Store, StoredMessage, StoredSummary } from '../store/types.ts';
 
 function serializeMessageForMatch(message: AgentMessage): string {
   const candidate = message as any;
@@ -48,9 +48,34 @@ function hasDirectMessageId(message: AgentMessage, messageId: string): boolean {
   return candidate.toolCallId === messageId || ('id' in candidate && candidate.id === messageId);
 }
 
-function formatSummaryContext(summaryContents: string[]): string {
+type InjectedSummaryContext = Pick<
+  StoredSummary,
+  'summaryId' | 'depth' | 'kind' | 'content' | 'earliestAt' | 'latestAt' | 'descendantCount'
+> & {
+  childIds: string[];
+};
+
+function formatSummaryContext(summaries: InjectedSummaryContext[]): string {
   return `[LCM Context Summary — this summarizes earlier parts of the conversation]\n\n` +
-    summaryContents.map((c, i) => `Summary ${i + 1}: ${c}`).join('\n\n');
+    summaries
+      .map((summary, i) => {
+        const lines = [
+          `Summary ${i + 1}: ${summary.content}`,
+          `summaryId: ${summary.summaryId}`,
+          `depth: ${summary.depth}`,
+          `kind: ${summary.kind}`,
+          `earliestAt: ${summary.earliestAt}`,
+          `latestAt: ${summary.latestAt}`,
+          `descendantCount: ${summary.descendantCount}`,
+        ];
+
+        if (summary.childIds.length > 0) { // AC 5: include child IDs when available
+          lines.push(`childIds: ${summary.childIds.join(', ')}`);
+        }
+
+        return lines.join('\n');
+      })
+      .join('\n\n');
 }
 
 function createAssistantSummaryMessage(summaryText: string): AgentMessage {
@@ -87,7 +112,7 @@ export class ContextBuilder {
     let strippedCount = 0;
     let summaryCount = 0;
     let maxDepth = 0;
-    const summaryContents: string[] = [];
+    const summaries: InjectedSummaryContext[] = [];
 
     for (const item of contextItems) {
       if (item.kind === 'summary') {
@@ -99,7 +124,16 @@ export class ContextBuilder {
         if (summary.depth > maxDepth) {
           maxDepth = summary.depth;
         }
-        summaryContents.push(summary.content);
+        summaries.push({
+          summaryId: summary.summaryId,
+          depth: summary.depth,
+          kind: summary.kind,
+          earliestAt: summary.earliestAt,
+          latestAt: summary.latestAt,
+          descendantCount: summary.descendantCount,
+          childIds: this.dagStore.getSummaryChildIds(summary.summaryId),
+          content: summary.content,
+        });
         continue;
       }
 
@@ -128,8 +162,8 @@ export class ContextBuilder {
     // persisted summaries as assistant context so historical text never becomes
     // a stronger synthetic user instruction. Non-user-leading paths keep the
     // framed user-summary behavior.
-    if (summaryContents.length > 0) {
-      const summaryText = formatSummaryContext(summaryContents);
+    if (summaries.length > 0) {
+      const summaryText = formatSummaryContext(summaries);
       const shouldEmitAssistantSummary =
         assembled[0]?.role === 'user' &&
         (assembled.length === 1 || assembled.some((message) => message.role === 'assistant'));

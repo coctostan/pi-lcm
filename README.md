@@ -29,7 +29,7 @@ context event fires
   │    └─ return unchanged (zero cost)
   │
   └─ above threshold?
-       ├─ Phase 2 (DAG available): inject XML summary nodes for older spans
+       ├─ Phase 2 (DAG available): inject labeled summary memory objects for older spans
        │    └─ summaries created async in agent_end via Claude Haiku 4.5
        │
        └─ Phase 1 (no DAG): strip old tool results (replace with placeholder)
@@ -122,8 +122,22 @@ Call `lcm_expand(id, nextOffset)` to fetch the next page. When the file has chan
 Searches across all messages and summaries in the session using FTS5 full-text search or regex. Use to find when something was mentioned, decided, or modified earlier in the session.
 
 ### `lcm_describe(summaryId)`
+Inspects a summary node's metadata without fetching full content. Returns the same metadata surfaced in injected summaries: `summaryId`, `depth`, `kind`, `earliestAt`, `latestAt`, `descendantCount`, and `childIds` when available. Use before `lcm_expand` to check relevance.
 
-Inspects a summary node's metadata (depth, kind, time range, message count, token count) without fetching full content. Use before `lcm_expand` to check relevance.
+Injected summary format in context:
+
+```
+[LCM Context Summary — this summarizes earlier parts of the conversation]
+
+Summary 1: Earlier turns covered setup, config, and deployment tradeoffs.
+summaryId: 123e4567-e89b-12d3-a456-426614174000
+depth: 1
+kind: condensed
+earliestAt: 100
+latestAt: 500
+descendantCount: 8
+childIds: sum_a, sum_b
+```
 
 ---
 
