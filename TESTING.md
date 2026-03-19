@@ -324,7 +324,7 @@ node --experimental-strip-types -e "
 
 | Tier | When | Time | What |
 |------|------|------|------|
-| **Quick Smoke** | After any code change | 2 min | `npm test` — 297 unit + stress tests |
+| **Quick Smoke** | After any code change | 2 min | `npm test` — 425+ unit + stress tests |
 | **Interactive** | After integration changes | 5 min | cmux split, 6+ turns, compaction check, tool chain |
 | **Deep Stress** | Before releases | 15 min | 20+ turns, aggressive config, condensation, recovery |
 
@@ -335,9 +335,37 @@ node --experimental-strip-types -e "
 - [ ] `lcm_describe` returns valid metadata (depth, kind, tokenCount > 0)
 - [ ] `lcm_expand` returns non-empty content from DAG store (`source: "dag"`)
 - [ ] DB inspector: FTS5 functional ✅, integrity OK ✅
+- [ ] Summary format uses structured sections (Facts / Decisions / Open threads / Key artifacts)
+- [ ] No imperative phrasing in summaries (no "next do X", no "you should")
+- [ ] Cue block appears before user turn when non-active summaries match (look for `<memory-cues>`)
+- [ ] Live user turn is always the final message in the assembled context
 
 ### Deep stress additions
 - [ ] Push past 50 messages
 - [ ] Check for d1+ summaries (condensation) — currently broken with defaults
 - [ ] Kill and restart pi — verify reconciliation rebuilds state
 - [ ] Verify context_items ordering (summaries contiguous at start)
+
+### Model surface verification (post-#044)
+
+**Summary formatting:**
+- After compaction fires, inspect summary content via `lcm_describe` or the DB inspector
+- Summaries should contain four structured sections: Facts, Decisions, Open threads at end of covered span, Key artifacts / identifiers
+- No imperative phrasing ("next do X", "you should") in summaries
+- Unfinished work phrased as historical state ("X had been requested but not yet delivered")
+
+**Cue placement:**
+- On a fresh user turn after compaction, the context handler may insert a `<memory-cues>` block
+- The cue block should appear as an assistant message immediately before the final user message
+- Cue lines reference summaryId, depth, kind, and a short snippet
+- No cue block on tool-follow-up calls (assistant → toolResult trailing the user turn)
+
+**Current-turn authority:**
+- The live user message must always be the final message in the assembled context
+- No summary or cue content should appear after the user message
+- A prompt like "show me config" after summaries about ROADMAP should produce config output, not ROADMAP continuation
+
+**System prompt contract:**
+- `before_agent_start` injects the LCM operating contract into the system prompt
+- The contract explains: memory objects are historical, summary IDs are retrieval handles, current-turn authority, silent tool usage, and `<memory-cues>` semantics
+- Verify with `PI_LCM_DEBUG=1` — the `before_provider_request` debug log shows system prompt length > 200 chars
