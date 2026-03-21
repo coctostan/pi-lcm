@@ -77,8 +77,8 @@ describe('Bug 027 — emit assistant summaries for short leading summary runs', 
 
     assert.deepStrictEqual(
       result.messages.map((m) => m.role),
-      ['assistant', 'assistant', 'user'],
-      'Historical summaries should be emitted as standalone assistant messages before the live user turn',
+      ['assistant', 'assistant', 'user', 'user'],
+      'Historical summaries should be emitted as standalone assistant messages before the live user turn, trailing messages appended',
     );
 
     assert.ok(textOf(result.messages[0]!).includes('The marker word is BANANA.'));
@@ -94,7 +94,8 @@ describe('Bug 027 — emit assistant summaries for short leading summary runs', 
       assert.ok(!text.includes('[context received]'));
     }
 
-    assert.ok(!result.messages.some((m) => textOf(m).includes('UNREFERENCED OLD')));
+    // Trailing messages are now appended (fix for #045/#046)
+    assert.ok(result.messages.some((m) => textOf(m).includes('UNREFERENCED OLD')));
     assert.strictEqual(result.stats.summaryCount, 2);
     assert.strictEqual(result.stats.maxDepth, 1);
   });
@@ -155,7 +156,7 @@ describe('Bug 027 — emit assistant summaries for short leading summary runs', 
 
     const result = makeBuilder(store).buildContext(messages);
 
-    assert.deepStrictEqual(result.messages.map((m) => m.role), ['assistant', 'assistant', 'toolResult']);
+    assert.deepStrictEqual(result.messages.map((m) => m.role), ['assistant', 'assistant', 'toolResult', 'user']);
     assert.ok(textOf(result.messages[0]!).includes('Tool read output contained tsconfig updates.'));
     assert.ok(textOf(result.messages[1]!).includes('The user requested a focused patch.'));
     assert.strictEqual(result.messages[2], messages[0]);
@@ -167,7 +168,8 @@ describe('Bug 027 — emit assistant summaries for short leading summary runs', 
       assert.ok(!text.includes('[context received]'));
     }
 
-    assert.ok(!result.messages.some((m) => textOf(m).includes('UNREFERENCED USER')));
+    // Trailing messages are now appended (fix for #045/#046)
+    assert.ok(result.messages.some((m) => textOf(m).includes('UNREFERENCED USER')));
     assert.strictEqual(result.stats.summaryCount, 2);
     assert.strictEqual(result.stats.maxDepth, 0);
   });
@@ -231,7 +233,7 @@ describe('Bug 027 — emit assistant summaries for short leading summary runs', 
       } as AgentMessage,
     ]);
 
-    assert.deepStrictEqual(result.messages.map((m) => m.role), ['assistant', 'assistant']);
+    assert.deepStrictEqual(result.messages.map((m) => m.role), ['assistant', 'assistant', 'toolResult']);
     assert.ok(textOf(result.messages[0]!).includes('Assistant already proposed a migration plan.'));
     assert.strictEqual(result.messages[1], assistantMessage);
 
@@ -242,7 +244,8 @@ describe('Bug 027 — emit assistant summaries for short leading summary runs', 
       assert.ok(!text.includes('[context received]'));
     }
 
-    assert.ok(!result.messages.some((m) => textOf(m).includes('UNREF')));
+    // Trailing messages are now appended (fix for #045/#046)
+    assert.ok(result.messages.some((m) => textOf(m).includes('UNREF')));
     assert.strictEqual(result.stats.summaryCount, 1);
     assert.strictEqual(result.stats.maxDepth, 1);
   });
