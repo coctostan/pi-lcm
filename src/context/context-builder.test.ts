@@ -65,7 +65,7 @@ describe('ContextBuilder — with DAG Store', () => {
       { role: 'user' as const, content: 'latest message', timestamp: 1000 } as AgentMessage,
     ]);
     const summaryMsg = result.messages[0] as any;
-    assert.strictEqual(result.messages.length, 1);
+    assert.strictEqual(result.messages.length, 2, 'Should include summary + trailing user prompt');
     assert.strictEqual(summaryMsg.role, 'assistant');
     const summaryText = typeof summaryMsg.content === 'string'
       ? summaryMsg.content
@@ -80,6 +80,10 @@ describe('ContextBuilder — with DAG Store', () => {
     assert.ok(summaryText.includes('descendantCount: 5'));
     assert.ok(!summaryText.includes('"id"'));
     assert.ok(!summaryText.includes('"msgRange"'));
+    // Trailing user prompt should be preserved (not dropped)
+    const lastMsg = result.messages[result.messages.length - 1] as any;
+    assert.strictEqual(lastMsg.role, 'user');
+    assert.strictEqual(lastMsg.content, 'latest message');
   });
 
   it('resolves message-kind context items for real-contract user/assistant messages without synthetic ids', () => {
@@ -236,6 +240,9 @@ describe('ContextBuilder — with DAG Store', () => {
     );
     assert.ok(hasToolResult, 'Should include referenced message from context_items');
     assert.strictEqual(result.messages[1], messages[0]);
+    // After the fix: trailing unmatched messages (after last matched index) are appended
+    assert.strictEqual(result.messages.length, 3, 'summary + toolResult + trailing user message');
+    assert.strictEqual(result.messages[2], messages[1]);
   });
 
   it('keeps strict context_items order and does not append unreferenced messages (AC 9 regression)', () => {
@@ -276,7 +283,7 @@ describe('ContextBuilder — with DAG Store', () => {
     ];
 
     const result = builder.buildContext(messages);
-    assert.strictEqual(result.messages.length, 2);
+    assert.strictEqual(result.messages.length, 3, 'summary + referenced toolResult + trailing user message');
     assert.strictEqual((result.messages[0] as any).role, 'assistant');
     const summaryText = typeof (result.messages[0] as any).content === 'string'
       ? (result.messages[0] as any).content
@@ -293,10 +300,9 @@ describe('ContextBuilder — with DAG Store', () => {
     assert.ok(!summaryText.includes('"id"'));
     assert.ok(!summaryText.includes('"msgRange"'));
     assert.strictEqual(result.messages[1], messages[0]);
-    assert.ok(
-      !result.messages.some((m: any) => m.role === 'user' && m.content === 'UNREFERENCED OLD'),
-      'Unreferenced old messages must not be appended',
-    );
+    // Trailing messages (after last matched index) ARE now appended — this is the fix for #045/#046
+    assert.strictEqual((result.messages[2] as any).content, 'UNREFERENCED OLD');
+    assert.strictEqual((result.messages[2] as any).role, 'user');
   });
 
   it('silently skips context items referencing nonexistent summaries (AC 10)', () => {
@@ -328,7 +334,7 @@ describe('ContextBuilder — with DAG Store', () => {
       { role: 'user' as const, content: 'hi', timestamp: 1 } as AgentMessage,
     ]);
 
-    assert.strictEqual(result.messages.length, 1);
+    assert.strictEqual(result.messages.length, 2, 'summary + trailing user message');
     assert.strictEqual(result.messages[0]!.role, 'assistant');
     const firstText = typeof (result.messages[0] as any).content === 'string'
       ? (result.messages[0] as any).content
@@ -344,6 +350,10 @@ describe('ContextBuilder — with DAG Store', () => {
     assert.ok(!firstText.includes('"id"'));
     assert.ok(!firstText.includes('"msgRange"'));
     assert.strictEqual(result.stats.summaryCount, 1);
+    // Trailing user prompt is preserved
+    const lastMsg = result.messages[result.messages.length - 1] as any;
+    assert.strictEqual(lastMsg.role, 'user');
+    assert.strictEqual(lastMsg.content, 'hi');
   });
 
   it('returns ContextHandlerResult with stats including strippedCount and estimatedTokensSaved (AC 11)', () => {

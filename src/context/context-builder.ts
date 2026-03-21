@@ -139,6 +139,26 @@ export class ContextBuilder {
       }
     }
 
+    // Append trailing unmatched input messages (e.g. the latest user prompt
+    // which hasn't been ingested yet — ingestion runs in agent_end, after
+    // the model responds, while the context event fires before the model call).
+    // Only append messages AFTER the last matched index to avoid re-introducing
+    // old messages that were replaced by summaries.
+    if (usedInputIndexes.size > 0) {
+      const lastMatchedIndex = Math.max(...usedInputIndexes);
+      for (let i = lastMatchedIndex + 1; i < inputMessages.length; i++) {
+        if (!usedInputIndexes.has(i)) {
+          assembled.push(inputMessages[i]!);
+        }
+      }
+    } else {
+      // No matched messages at all (only summaries) — append ALL input messages
+      // since none were consumed by context items.
+      for (let i = 0; i < inputMessages.length; i++) {
+        assembled.push(inputMessages[i]!);
+      }
+    }
+
     // Cue injection: insert <memory-cues> before the final user turn
     if (this.dagStore && assembled.length > 0) {
       const freshTurn = isFreshUserTurn(assembled);
