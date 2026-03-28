@@ -19,7 +19,7 @@ describe('runCompaction no-text regression', () => {
     const summarizer = new PiSummarizer({
       modelRegistry: {
         find: () => ({ id: 'claude-haiku-4-5', provider: 'anthropic' }),
-        getApiKey: async () => 'fake-token',
+        getApiKeyAndHeaders: async () => ({ ok: true, apiKey: 'fake-token', headers: { Authorization: 'Bearer fake-token' } }),
       } as any,
       summaryModel: 'anthropic/claude-haiku-4-5',
       completeFn: async () => ({

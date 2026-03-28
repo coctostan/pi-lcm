@@ -69,8 +69,8 @@ describe('production wiring: session_start creates SqliteStore + PiSummarizer (A
         if (provider === 'anthropic' && modelId === 'claude-haiku-4-5') return mockModel;
         return undefined;
       },
-      async getApiKey(_model: any) {
-        return 'oauth-token';
+      async getApiKeyAndHeaders(_model: any) {
+        return { ok: true, apiKey: 'oauth-token', headers: { Authorization: 'Bearer oauth-token' } };
       },
     } as any;
 
@@ -149,7 +149,10 @@ describe('production wiring: graceful degradation on SqliteStore failure (AC 10,
           getBranch: () => [],
         },
         cwd: '/tmp/test-cwd',
-        modelRegistry: { find: () => ({}), getApiKey: async () => 'oauth-token' } as any,
+        modelRegistry: {
+          find: () => ({}),
+          getApiKeyAndHeaders: async () => ({ ok: true, apiKey: 'oauth-token', headers: { Authorization: 'Bearer oauth-token' } }),
+        } as any,
         ui: { setStatus() {} },
         getContextUsage: () => undefined,
       } as any;
@@ -207,7 +210,7 @@ describe('production wiring: graceful degradation on PiSummarizer failure (AC 11
     // modelRegistry.find returns undefined — PiSummarizer will throw "Model not found"
     const failingModelRegistry = {
       find: () => undefined,
-      getApiKey: async () => 'oauth-token',
+      getApiKeyAndHeaders: async () => ({ ok: true, apiKey: 'oauth-token', headers: { Authorization: 'Bearer oauth-token' } }),
     } as any;
 
     const logged: string[] = [];
@@ -279,8 +282,8 @@ describe('production wiring: session_shutdown closes production store (AC 18)', 
         if (provider === 'anthropic' && modelId === 'claude-haiku-4-5') return mockModel;
         return undefined;
       },
-      async getApiKey(_model: any) {
-        return 'oauth-token';
+      async getApiKeyAndHeaders(_model: any) {
+        return { ok: true, apiKey: 'oauth-token', headers: { Authorization: 'Bearer oauth-token' } };
       },
     } as any;
 
@@ -345,8 +348,8 @@ it('cleans only the active session cache on session_start and session_shutdown',
       if (provider === 'anthropic' && modelId === 'claude-haiku-4-5') return mockModel;
       return undefined;
     },
-    async getApiKey(_model: any) {
-      return 'oauth-token';
+    async getApiKeyAndHeaders(_model: any) {
+      return { ok: true, apiKey: 'oauth-token', headers: { Authorization: 'Bearer oauth-token' } };
     },
   } as any;
 
