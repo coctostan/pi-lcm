@@ -1,6 +1,6 @@
 # pi-lcm Handoff
 
-_Updated: 2026-03-06_
+_Updated: 2026-03-28_
 
 ## What This Project Is
 
@@ -59,13 +59,13 @@ Changed files:
 ### What changed in behavior
 Before:
 - used `ctx.modelRegistry.find(...)`
-- did **not** use `ctx.modelRegistry.getApiKey(...)`
+- did **not** use `ctx.modelRegistry.getApiKeyAndHeaders(...)`
 - `complete()` got no auth token in live OAuth setups
 
 Now:
 - still resolves model via `find(...)`
-- also resolves auth via `getApiKey(model)`
-- passes that token as `options.apiKey` to `complete()`
+- also resolves auth via `getApiKeyAndHeaders(model)`
+- passes `options.apiKey` and `options.headers` to `complete()`
 
 ### Validation
 - `npm test` ✅

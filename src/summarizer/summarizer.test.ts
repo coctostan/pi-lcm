@@ -6,7 +6,7 @@ describe('PiSummarizer', () => {
   it('resolves model via modelRegistry.find(provider, modelId) and throws if not found (AC 15)', () => {
     const mockRegistry = {
       find: (_provider: string, _modelId: string) => undefined,
-      getApiKey: async (_model: any) => undefined,
+      getApiKeyAndHeaders: async (_model: any) => ({ ok: true, apiKey: undefined, headers: undefined }),
     };
 
     assert.throws(
@@ -34,7 +34,7 @@ describe('PiSummarizer', () => {
         findCalls.push({ provider, modelId });
         return mockModel;
       },
-      getApiKey: async (_model: any) => undefined,
+      getApiKeyAndHeaders: async (_model: any) => ({ ok: true, apiKey: undefined, headers: undefined }),
     };
 
     const summarizer = new PiSummarizer({
@@ -73,7 +73,10 @@ describe('PiSummarizer', () => {
     };
 
     const summarizer = new PiSummarizer({
-      modelRegistry: { find: () => mockModel, getApiKey: async () => 'oauth-token' } as any,
+      modelRegistry: {
+        find: () => mockModel,
+        getApiKeyAndHeaders: async () => ({ ok: true, apiKey: 'oauth-token', headers: { Authorization: 'Bearer oauth-token' } }),
+      } as any,
       summaryModel: 'anthropic/claude-haiku-4-5',
       completeFn: mockComplete as any,
     });
@@ -97,6 +100,7 @@ describe('PiSummarizer', () => {
     assert.strictEqual(call.context.messages[0].content, 'Some conversation content');
     assert.strictEqual(call.options.maxTokens, 500);
     assert.strictEqual(call.options.apiKey, 'oauth-token');
+    assert.deepStrictEqual(call.options.headers, { Authorization: 'Bearer oauth-token' });
   });
 
   it('calls complete() with condense prompt for kind "condensed" (AC 16)', async () => {
@@ -124,7 +128,10 @@ describe('PiSummarizer', () => {
     };
 
     const summarizer = new PiSummarizer({
-      modelRegistry: { find: () => mockModel, getApiKey: async () => 'oauth-token' } as any,
+      modelRegistry: {
+        find: () => mockModel,
+        getApiKeyAndHeaders: async () => ({ ok: true, apiKey: 'oauth-token', headers: { Authorization: 'Bearer oauth-token' } }),
+      } as any,
       summaryModel: 'anthropic/claude-haiku-4-5',
       completeFn: mockComplete as any,
     });
@@ -169,7 +176,10 @@ describe('PiSummarizer', () => {
     };
 
     const summarizer = new PiSummarizer({
-      modelRegistry: { find: () => mockModel, getApiKey: async () => 'oauth-token' } as any,
+      modelRegistry: {
+        find: () => mockModel,
+        getApiKeyAndHeaders: async () => ({ ok: true, apiKey: 'oauth-token', headers: { Authorization: 'Bearer oauth-token' } }),
+      } as any,
       summaryModel: 'anthropic/claude-haiku-4-5',
       completeFn: mockComplete as any,
     });
@@ -185,5 +195,10 @@ describe('PiSummarizer', () => {
     assert.ok(capturedOptions, 'Options should have been passed to complete()');
     assert.strictEqual(capturedOptions.signal, ac.signal, 'Signal should be propagated to complete()');
     assert.strictEqual(capturedOptions.apiKey, 'oauth-token', 'API key/token should be propagated to complete()');
+    assert.deepStrictEqual(
+      capturedOptions.headers,
+      { Authorization: 'Bearer oauth-token' },
+      'Resolved headers should be propagated to complete()',
+    );
   });
 });

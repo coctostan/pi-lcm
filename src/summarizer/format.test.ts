@@ -120,7 +120,7 @@ describe('formatMessagesForSummary', () => {
     const summarizer = new PiSummarizer({
       modelRegistry: {
         find: () => ({ id: 'claude-haiku-4-5', provider: 'anthropic' }),
-        getApiKey: async () => 'oauth-token',
+        getApiKeyAndHeaders: async () => ({ ok: true, apiKey: 'oauth-token', headers: { Authorization: 'Bearer oauth-token' } }),
       } as any,
       summaryModel: 'anthropic/claude-haiku-4-5',
       completeFn: mockComplete as any,

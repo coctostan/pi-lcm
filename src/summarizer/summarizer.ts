@@ -39,7 +39,7 @@ export type CompleteFn = (
 ) => Promise<AssistantMessage>;
 
 export interface PiSummarizerOptions {
-  modelRegistry: Pick<ModelRegistry, 'find' | 'getApiKey'>;
+  modelRegistry: Pick<ModelRegistry, 'find' | 'getApiKeyAndHeaders'>;
   summaryModel: string; // "provider/modelId"
   completeFn?: CompleteFn;
 }
@@ -72,7 +72,7 @@ export class SummarizationUnavailableError extends Error {
 export class PiSummarizer implements Summarizer {
   private model: Model<Api>;
   private completeFn: CompleteFn;
-  private getApiKey: Pick<ModelRegistry, 'getApiKey'>['getApiKey'];
+  private getApiKeyAndHeaders: Pick<ModelRegistry, 'getApiKeyAndHeaders'>['getApiKeyAndHeaders'];
 
   constructor(opts: PiSummarizerOptions) {
     const slashIdx = opts.summaryModel.indexOf('/');
@@ -93,7 +93,7 @@ export class PiSummarizer implements Summarizer {
       (() => {
         throw new Error('completeFn not provided');
       });
-    this.getApiKey = opts.modelRegistry.getApiKey.bind(opts.modelRegistry);
+    this.getApiKeyAndHeaders = opts.modelRegistry.getApiKeyAndHeaders.bind(opts.modelRegistry);
   }
 
   async summarize(content: string, opts: SummarizeOptions): Promise<string> {
@@ -106,7 +106,10 @@ export class PiSummarizer implements Summarizer {
     });
     const systemPrompt = opts.kind === 'leaf' ? getLeafPrompt() : getCondensePrompt(opts.depth);
 
-    const apiKey = await this.getApiKey(this.model);
+    const auth = await this.getApiKeyAndHeaders(this.model);
+    if (!auth.ok) {
+      throw new Error(auth.error);
+    }
     const response = await this.completeFn(
       this.model,
       {
@@ -114,7 +117,8 @@ export class PiSummarizer implements Summarizer {
         messages: [{ role: 'user', content, timestamp: Date.now() }],
       },
       {
-        apiKey,
+        apiKey: auth.apiKey,
+        headers: auth.headers,
         maxTokens: opts.maxOutputTokens,
         signal: opts.signal,
       },
